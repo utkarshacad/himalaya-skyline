@@ -15,9 +15,9 @@
 
 | Level | Zoom | Used for distances | Covers |
 |---|---|---|---|
-| 0 | z12 (~33 m) | < 4.5 km | 6 km |
-| 1 | z11 (~70 m) | < 12 km | 14 km |
-| 2 | z10 (~140 m) | < 62 km | 66 km |
+| 0 | z12 (~33 m) | < 7 km | 9 km |
+| 1 | z11 (~70 m) | < 20 km | 23 km |
+| 2 | z10 (~140 m) | < 72 km | 76 km |
 | 3 | z9 (~270 m) | < 235 km | 243 km |
 
 - Corner tiles outside the circle are skipped. Tiles are fetched 12 at a time; the cache is cleared on each new viewpoint.
@@ -37,7 +37,7 @@ The goal is PeakFinder's feel: a monochrome line drawing, and panning with no la
   - the visibility, theme, contours or fly-up height change;
   - the window is resized.
 - While a new generation fills in, the previous one stays on screen, scaled.
-- Render scale is `min(1.5, devicePixelRatio)`, lowered until the full 360° is at most 14 M pixels.
+- Render scale is `min(2, devicePixelRatio)`, lowered until the full 360° is at most 18 M pixels.
 - **Measured** in headless Chromium (software GL, 3 workers, 1330×640):
   - Pangarchulla: the view was sharp **0.7 s** after the terrain arrived, and the whole 360° took **0.9 s**.
   - A synthetic pan held **16.7 ms** per frame (60 fps), median and p95.

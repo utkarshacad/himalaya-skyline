@@ -119,6 +119,18 @@ He sent screenshots. What he asked for, and what was done in v2.2:
 
 He said "I will be away"; the work was pushed for him to check on his phone.
 
+### Round 10: feedback on v2.2 (15 November 2026)
+
+He likes the Pangarchulla views, the fly-ins and the shading. He wants the mountains even sharper, closer to the PeakFinder app, and still smooth; he'll send PeakFinder video frames later. He asked whether this should be an app instead of an HTML page.
+
+Done in v2.3:
+1. **River names hard to read:** they're now pills (dark or light background).
+2. **Jagged straight lines in the mini-map:** a bug, river vertices read at the wrong offset.
+3. and 4. **Home-map markers and rivers lost on the white snow of the high Himalaya:** snow is now a cool grey, never white. Markers sit on dark round badges, and rivers have a casing line.
+5. **Himalaya grid as a slide-in popup:** it's now a drawer with a slim edge tab. It slides in about 0.9 s after load and can be tucked away.
+
+Also: sharper terrain, with z12 out to 7 km, z11 to 20 km and z10 to 72 km, and a render scale of up to 2× on retina screens.
+
 ## Things he has rejected or disliked
 
 - The first prototype's look: MapLibre colour ramp, editorial panel.
