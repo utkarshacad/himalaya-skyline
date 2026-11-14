@@ -926,24 +926,40 @@ function vpSolved(id) { return SAVE.solved[id] || (SAVE.solved[id] = {}); }
 //  Terrain streaming
 // =====================================================================================
 const tileCache = new Map();
+// Raw PNG responses are kept on the device (Cache API), keyed by the first tile URL, so a revisit
+// streams nothing. Where the Cache API is missing or refuses (file://, private mode), tiles just stream.
+const TILE_STORE = 'hs-tiles-v1';
+let tileStore = null;
+function openTileStore() {
+  if (!tileStore) tileStore = (async () => { try { return self.caches ? await caches.open(TILE_STORE) : null; } catch (e) { return null; } })();
+  return tileStore;
+}
+async function fetchTilePNG(z, x, y) {
+  const key = TILE_URLS[0].replace('{z}', z).replace('{x}', x).replace('{y}', y);
+  const store = await openTileStore();
+  if (store) { try { const hit = await store.match(key); if (hit) return hit.blob(); } catch (e) {} }
+  let lastErr;
+  for (const tpl of TILE_URLS) {
+    try {
+      const res = await fetch(tpl.replace('{z}', z).replace('{x}', x).replace('{y}', y), { mode: 'cors' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const blob = await res.blob();
+      if (store) store.put(key, new Response(blob, { headers: { 'content-type': 'image/png' } })).catch(() => {});
+      return blob;
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr;
+}
 function loadTile(z, x, y) {
   const key = z + '/' + x + '/' + y;
   if (tileCache.has(key)) return tileCache.get(key);
   const p = (async () => {
-    let lastErr;
-    for (const tpl of TILE_URLS) {
-      try {
-        const res = await fetch(tpl.replace('{z}', z).replace('{x}', x).replace('{y}', y), { mode: 'cors' });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const bmp = await createImageBitmap(await res.blob());
-        const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256;
-        const ctx = cv.getContext('2d', { willReadFrequently: true }); ctx.drawImage(bmp, 0, 0);
-        const px = ctx.getImageData(0, 0, 256, 256).data, out = new Float32Array(65536);
-        for (let i = 0; i < 65536; i++) out[i] = px[i * 4] * 256 + px[i * 4 + 1] + px[i * 4 + 2] / 256 - 32768;
-        return out;
-      } catch (e) { lastErr = e; }
-    }
-    throw lastErr;
+    const bmp = await createImageBitmap(await fetchTilePNG(z, x, y));
+    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256;
+    const ctx = cv.getContext('2d', { willReadFrequently: true }); ctx.drawImage(bmp, 0, 0);
+    const px = ctx.getImageData(0, 0, 256, 256).data, out = new Float32Array(65536);
+    for (let i = 0; i < 65536; i++) out[i] = px[i * 4] * 256 + px[i * 4 + 1] + px[i * 4 + 2] / 256 - 32768;
+    return out;
   })();
   tileCache.set(key, p);
   p.catch(() => tileCache.delete(key));
@@ -2301,7 +2317,7 @@ loadMapLibre().then((ok) => {
   else { $('map').innerHTML = '<div class="card" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);right:auto;bottom:auto"><span class="tag">Map unavailable</span><p>The map library didn\'t load, so there\'s no fly-in. Pick a viewpoint from the grid to play.</p></div>'; }
   refreshHome();
 });
-window.__game = { VIEWPOINTS, get CUR() { return CUR; }, view, selectVp, enterViewpoint, showPlay, onViewChanged,
+window.__game = { VIEWPOINTS, get CUR() { return CUR; }, view, selectVp, enterViewpoint, showPlay, onViewChanged, goHome,
   ready: () => !!(CUR && G && visibleReady(G)) };
 </script>
 </body>

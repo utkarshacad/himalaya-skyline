@@ -25,7 +25,8 @@ function serve() {
 
 const LAUNCH_ARGS = ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl'];
 
-// open({ theme, viewport, noWebGL2, dpr, browser, context }) → { page, browser, context, errors, requests }
+// open({ theme, viewport, noWebGL2, noMap, dpr, browser, context, blockTiles })
+// noMap: MapLibre fails to load, so only the panorama's own tile fetches show up in `requests` → { page, browser, context, errors, requests }
 async function open(opts = {}) {
   const url = await serve();
   const browser = opts.browser || await chromium.launch({ args: LAUNCH_ARGS });
@@ -37,6 +38,7 @@ async function open(opts = {}) {
   page.on('request', (r) => { if (/terrarium/.test(r.url())) requests.push(r.url()); });
   await page.route(/maplibre-gl@[^/]+\/dist\/(.+)$/, (route) => {
     const f = path.join(ML, route.request().url().match(/dist\/([^?]+)/)[1]);
+    if (opts.noMap) return route.fulfill({ status: 200, contentType: 'text/javascript', body: '' });   // loads, defines nothing
     if (!fs.existsSync(f)) return route.fulfill({ status: 404, body: '' });
     route.fulfill({ status: 200, contentType: TYPES[path.extname(f)] || 'text/plain', body: fs.readFileSync(f) });
   });
