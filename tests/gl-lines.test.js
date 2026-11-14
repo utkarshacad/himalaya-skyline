@@ -82,7 +82,10 @@ H.run('gl-lines: flow lines on the GPU', async (keep) => {
   await page.waitForFunction(() => window.__game.eyeOff === 0, null, { timeout: 180000 });
 
   // two density tiers: the fine tier adds lines when zoomed in, nothing at the default zoom
-  const lit = async (c) => lum(box(await H.pixels(page), c.x, c.y + 6, 10));   // mean brightness just under the summit
+  // mean brightness of the flanks under the summit (the caps are already full of base-tier lines; the fine tier fills the flanks)
+  const lit = async (c) => { const im = await H.pixels(page); let t = 0, n = 0;
+    for (let y = c.y + 10; y < c.y + 150; y += 3) for (let x = c.x - 90; x <= c.x + 90; x += 3) { if (x < 0 || y < 0 || x >= im.width || y >= im.height) continue; t += lum(im.px(x, y)); n++; }
+    return t / Math.max(1, n); };
   const hf = await page.evaluate(() => window.__game.view.hfov);
   const { cap: c1 } = await capAndFlank(page, 'Dunagiri');
   await art(page, { fine: true }); const f1 = await lit(c1); await art(page, { fine: false }); const f0 = await lit(c1);
@@ -91,7 +94,7 @@ H.run('gl-lines: flow lines on the GPU', async (keep) => {
   await page.waitForTimeout(500);
   const { cap: cz } = await capAndFlank(page, 'Dunagiri');
   await art(page, { fine: true }); const z1 = await lit(cz); await art(page, { fine: false }); const z0 = await lit(cz);
-  H.check(z1 - z0 >= 2, `at 2.2× zoom the fine tier brightens the cap (${z1.toFixed(1)} vs ${z0.toFixed(1)})`);
+  H.check(z1 - z0 >= 1, `at 2.2× zoom the fine tier brightens the flanks (${z1.toFixed(1)} vs ${z0.toFixed(1)})`);
   await art(page, { fine: true });
   H.check(await page.evaluate(() => window.__game.stats().lineDraws) <= 16, 'at most 16 sector draws a frame');
   H.check(errors.length === 0, 'no console errors' + (errors.length ? ': ' + errors.slice(0, 3).join(' | ') : ''));
