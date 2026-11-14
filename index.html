@@ -835,22 +835,25 @@ function meshRings(rows, d0, maxD) {
   for (let i = 0; i < rows; i++) r[i] = d0 * Math.exp(k * i);
   return r;
 }
-// rows r0..r1-1 of the mesh: pos (east, north, height) and attr (nx, ny, conv, rel) per vertex.
+// rows r0..r1-1 of the mesh: pos (east, north, height; float) and attr (6 × int16 per vertex):
+// nx·32767, ny·32767, conv·2000, rel (m), floor (m, the local valley floor), 0.
 // Each vertex stays on its column's ray but moves to the highest of 5 points inside its ring cell
 // (rings[r]·q^±½), so crests and summits between two rings are never cut off the skyline.
-// Missing heights are written as h = −1e4 with attr.w = −1e9, so the shader drops them and nothing is NaN.
+// Missing heights are written as h = −1e4 with rel = −32768, so the shader drops them and nothing is NaN.
 function buildPolarMesh(levels, vp, o) {
   const cols = o.cols || MESH_COLS, rows = o.rows || MESH_ROWS, d0 = o.d0 || MESH_D0, maxD = o.maxD || MESH_MAXD;
   const r0 = o.r0 || 0, r1 = o.r1 == null ? rows : o.r1, n = (r1 - r0) * cols;
   const rings = meshRings(rows, d0, maxD);
-  const pos = new Float32Array(n * 3), attr = new Float32Array(n * 4);
+  const pos = new Float32Array(n * 3), attr = new Int16Array(n * 6);
+  const i16 = (v) => v > 32767 ? 32767 : v < -32767 ? -32767 : Math.round(v);
+  const LOW = new Float64Array(3);
   const SIN = new Float64Array(cols), COS = new Float64Array(cols);
   for (let c = 0; c < cols; c++) { const az = 2 * Math.PI * c / cols; SIN[c] = Math.sin(az); COS[c] = Math.cos(az); }
   const RD = [[1, 0], [-1, 0], [0, 1], [0, -1], [.7, .7], [-.7, -.7], [.7, -.7], [-.7, .7]];
   const lat0 = vp.lat, lon0 = vp.lon, q = Math.sqrt(rings[1] / rings[0]);
   const SUB = [1, Math.pow(q, -0.75), Math.pow(q, -0.375), Math.pow(q, 0.375), Math.pow(q, 0.75)];
   for (let r = r0; r < r1; r++) {
-    const dr = rings[r], e = dr < 7000 ? 70 : dr < 20000 ? 140 : dr < 72000 ? 280 : 560, e2 = e * 2.5, R = Math.max(1200, 0.06 * dr);
+    const dr = rings[r], e = dr < 7000 ? 70 : dr < 20000 ? 140 : dr < 72000 ? 280 : 560, e2 = e * 2.5, R = Math.max(1200, 0.06 * dr), RF = Math.max(1500, 0.08 * dr);
     const nSub = r === 0 || r === rows - 1 ? 1 : 5;        // the first and last rings stay exact
     for (let c = 0; c < cols; c++) {
       const i = (r - r0) * cols + c, s = SIN[c], co = COS[c];
@@ -863,7 +866,7 @@ function buildPolarMesh(levels, vp, o) {
       const lat = lat0 + d * co / K_DEG, cl = Math.cos(lat * 0.017453292519943295), lon = lon0 + d * s / (K_DEG * cl);
       const dLon = 1 / (K_DEG * cl), dLat = 1 / K_DEG;
       pos[i * 3] = d * s; pos[i * 3 + 1] = d * co;
-      if (h !== h) { pos[i * 3 + 2] = -1e4; attr[i * 4 + 3] = -1e9; continue; }
+      if (h !== h) { pos[i * 3 + 2] = -1e4; attr[i * 6 + 3] = -32768; continue; }
       pos[i * 3 + 2] = h;
       // normal from the e-spaced central gradient
       const hE = elevAt(levels, lon + e * dLon, lat, d), hW = elevAt(levels, lon - e * dLon, lat, d);
@@ -872,15 +875,22 @@ function buildPolarMesh(levels, vp, o) {
       if (hE === hE && hW === hW) gx = (hE - hW) / (2 * e);
       if (hN === hN && hS === hS) gy = (hN - hS) / (2 * e);
       const inv = 1 / Math.sqrt(gx * gx + gy * gy + 1);
-      attr[i * 4] = -gx * inv; attr[i * 4 + 1] = -gy * inv;
+      attr[i * 6] = i16(-gx * inv * 32767); attr[i * 6 + 1] = i16(-gy * inv * 32767);
       // curvature as v2.4: + on ridges and spurs, − in gullies
       const c1 = elevAt(levels, lon + e2 * dLon, lat, d), c2 = elevAt(levels, lon - e2 * dLon, lat, d);
       const c3 = elevAt(levels, lon, lat + e2 * dLat, d), c4 = elevAt(levels, lon, lat - e2 * dLat, d);
-      attr[i * 4 + 2] = (c1 === c1 && c2 === c2 && c3 === c3 && c4 === c4) ? (4 * h - c1 - c2 - c3 - c4) / e2 : 0;
+      attr[i * 6 + 2] = (c1 === c1 && c2 === c2 && c3 === c3 && c4 === c4) ? i16((4 * h - c1 - c2 - c3 - c4) / e2 * 2000) : 0;
       // relief above the surroundings (mean of 8 samples at radius R)
       let sum = 0, k = 0;
       for (let j = 0; j < 8; j++) { const v = elevAt(levels, lon + RD[j][0] * R * dLon, lat + RD[j][1] * R * dLat, d); if (v === v) { sum += v; k++; } }
-      attr[i * 4 + 3] = k ? h - sum / k : 0;
+      attr[i * 6 + 3] = k ? Math.max(-32000, Math.min(32000, Math.round(h - sum / k))) : 0;
+      // the local valley floor: the mean of the 3 lowest of 16 samples on two rings (RF and RF/2), never above the vertex
+      LOW[0] = LOW[1] = LOW[2] = h;
+      for (let j = 0; j < 16; j++) {
+        const rr = j < 8 ? RF : RF * 0.5, v = elevAt(levels, lon + RD[j & 7][0] * rr * dLon, lat + RD[j & 7][1] * rr * dLat, d);
+        if (v === v && v < LOW[2]) { if (v < LOW[0]) { LOW[2] = LOW[1]; LOW[1] = LOW[0]; LOW[0] = v; } else if (v < LOW[1]) { LOW[2] = LOW[1]; LOW[1] = v; } else LOW[2] = v; }
+      }
+      attr[i * 6 + 4] = i16((LOW[0] + LOW[1] + LOW[2]) / 3);
     }
   }
   return { cols, rows, r0, r1, rings, pos, attr };
@@ -904,23 +914,24 @@ function elevAtPolar(levels, vp, pts) {
 <script id="glsl-terrain-vs" type="text/plain">#version 300 es
 precision highp float;
 in vec3 aPos;             // east, north, height (m)
-in vec4 aAttr;            // nx, ny, conv, rel  (rel = −1e9 marks a hole)
+in vec4 aAttr;            // int16: nx·32767, ny·32767, conv·2000, rel m  (rel = −32768 marks a hole)
+in vec2 aFloor;           // int16: valley floor m, spare
 uniform float uHeading, uPitch, uPpr, uEye, uW, uH, uCurv, uFar;
-out float vD, vH, vBehind;
+out float vD, vH, vBehind, vFloor;
 out vec4 vAttr;
 const float PI = 3.14159265358979, TAU = 6.28318530717959;
 void main() {
   float d = length(aPos.xy);
   float dx = mod(atan(aPos.x, aPos.y) - uHeading + PI, TAU) - PI;
   float alt = atan(aPos.z - d * d * uCurv - uEye, max(d, 1.0));
-  vD = d; vH = aPos.z; vAttr = aAttr;
+  vD = d; vH = aPos.z; vAttr = vec4(aAttr.xy / 32767.0, aAttr.z / 2000.0, aAttr.w); vFloor = aFloor.x;
   vBehind = abs(dx) > 2.2 ? 1.0 : 0.0;          // triangles across the seam behind the viewer are dropped
   gl_Position = vec4(dx * uPpr / (uW * 0.5), (alt - uPitch) * uPpr / (uH * 0.5), clamp(d / uFar, 0.0, 1.0) * 2.0 - 1.0, 1.0);
 }
 </script>
 <script id="glsl-terrain-fs" type="text/plain">#version 300 es
 precision highp float;
-in float vD, vH, vBehind;
+in float vD, vH, vBehind, vFloor;
 in vec4 vAttr;
 uniform float uMaxD, uFar;
 uniform vec3 uNear, uFarC, uGlow, uDeep, uMist, uHor;
@@ -932,7 +943,7 @@ vec4 encDepth(float d) {
   return vec4(floor(v / 65536.0), mod(floor(v / 256.0), 256.0), mod(v, 256.0), 255.0) / 255.0;
 }
 void main() {
-  if (vBehind > 0.0 || vAttr.w < -1e5 || vD > uMaxD) discard;
+  if (vBehind > 0.0 || vAttr.w < -32000.0 || vD > uMaxD) discard;
   float fd = clamp(vD / uMaxD, 0.0, 1.0);
   vec3 n = normalize(vec3(vAttr.x, vAttr.y, sqrt(max(0.0, 1.0 - vAttr.x * vAttr.x - vAttr.y * vAttr.y))));
   const vec3 SUN = vec3(-0.5417, 0.5417, 0.6428);      // north-west, 40° up
@@ -1297,12 +1308,21 @@ function meshIndex(cols, rows) {
   return idx;
 }
 async function buildMesh(opts = {}) {
-  const cols = opts.cols || MESH_COLS, rows = opts.rows || MESH_ROWS, n = workers.length;
-  const bands = Array.from({ length: n }, (_, k) => [Math.round(rows * k / n), Math.round(rows * (k + 1) / n)]);
-  const parts = await Promise.all(bands.map(([r0, r1], k) => ask(workers[k], { cmd: 'mesh', cols, rows, r0, r1 })));
-  const pos = new Float32Array(cols * rows * 3), attr = new Float32Array(cols * rows * 4);
-  for (const p of parts) { pos.set(new Float32Array(p.pos), p.r0 * cols * 3); attr.set(new Float32Array(p.attr), p.r0 * cols * 4); }
-  stats.meshBuilds++;
+  const cols = opts.cols || MESH_COLS, rows = opts.rows || MESH_ROWS, n = workers.length, nb = n * 4;
+  // many small bands, each copied into the final arrays and dropped as it arrives, so little is held twice
+  const pos = new Float32Array(cols * rows * 3), attr = new Int16Array(cols * rows * 6);
+  let live = pos.byteLength + attr.byteLength, peak = live, next = 0;
+  const chain = async (w) => {
+    while (next < nb) {
+      const k = next++, r0 = Math.round(rows * k / nb), r1 = Math.round(rows * (k + 1) / nb);
+      const p = await ask(w, { cmd: 'mesh', cols, rows, r0, r1 });
+      live += p.pos.byteLength + p.attr.byteLength; peak = Math.max(peak, live + (n - 1) * (p.pos.byteLength + p.attr.byteLength));
+      pos.set(new Float32Array(p.pos), r0 * cols * 3); attr.set(new Int16Array(p.attr), r0 * cols * 6);
+      live -= p.pos.byteLength + p.attr.byteLength;
+    }
+  };
+  await Promise.all(workers.map(chain));
+  stats.meshBuilds++; stats.meshPeakMB = peak / 1048576;
   return { cmd: 'mesh', cols, rows, pos, attr, index: meshIndex(cols, rows), rings: meshRings(rows, MESH_D0, MESH_MAXD) };
 }
 const stats = { meshBuilds: 0, newGen: 0, glFrames: 0 };
@@ -1486,7 +1506,7 @@ const GLPano = (() => {
     const sh = (type, s) => { const o = gl.createShader(type); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
     const p = gl.createProgram();
     gl.attachShader(p, sh(gl.VERTEX_SHADER, src(vsId))); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, src(fsId)));
-    gl.bindAttribLocation(p, 0, 'aPos'); gl.bindAttribLocation(p, 1, 'aAttr');
+    gl.bindAttribLocation(p, 0, 'aPos'); gl.bindAttribLocation(p, 1, 'aAttr'); gl.bindAttribLocation(p, 2, 'aFloor');
     gl.linkProgram(p);
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
     const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
@@ -1532,7 +1552,8 @@ const GLPano = (() => {
     const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, m.pos, gl.STATIC_DRAW);
     gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
     const ab = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, ab); gl.bufferData(gl.ARRAY_BUFFER, m.attr, gl.STATIC_DRAW);
-    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.SHORT, false, 12, 0);
+    gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 2, gl.SHORT, false, 12, 8);
     const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, m.index, gl.STATIC_DRAW);
     gl.bindVertexArray(null);
     P._bufs = [vb, ab, ib]; nIdx = m.index.length;
@@ -2898,6 +2919,7 @@ window.__game = { VIEWPOINTS, get CUR() { return CUR; }, view, selectVp, enterVi
   glActive: () => GLPano.ok && !!GLPano.mesh,
   glSetEdges: (on) => { GLPano.edges = !!on; },
   glOn: () => GLPano.ok,
+  glAlphaMin: () => { drawGL(); const gl = GLPano.gl, w = gl.drawingBufferWidth, h = gl.drawingBufferHeight, b = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, b); let m = 255; for (let i = 3; i < b.length; i += 4) if (b[i] < m) m = b[i]; return m; },
   get guessTarget() { return guessTarget; },
   get eyeOff() { return eyeOff; }, get eyeTarget() { return eyeTarget; }, flyTravel, setEyeOffset,
   depthAtCentre: () => depthAtAng(G, view.heading, view.pitch),

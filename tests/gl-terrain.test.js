@@ -59,5 +59,18 @@ H.run('gl-terrain: pangarchulla, dark', async (keep) => {
   const px = await page.evaluate(() => window.__game.glBufferPixels());
   H.check(px > 0 && px <= 4.2e6, `dpr 3: drawing buffer ${(px / 1e6).toFixed(2)} M pixels ≤ 4.2 M`);
   H.check(errors.length === 0, 'no console errors at dpr 3');
+  await browser.close();
+
+  // a mesh with holes (a quarter of the tiles never arrive) still draws a complete, opaque frame
+  const lost = (url) => { const m = url.match(/terrarium\/(\d+)\/(\d+)\/(\d+)/); return !!m && (+m[2] * 7 + +m[3] * 13 + +m[1]) % 4 === 1; };
+  ({ page, browser, errors } = await H.open({ theme: 'dark', noMap: true, blockTiles: lost }));
+  keep(browser);
+  await H.enter(page, 'pangarchulla');
+  H.check(await page.evaluate(() => window.__game.glActive()), 'holes: GL panorama is active');
+  const amin = await page.evaluate(() => window.__game.glAlphaMin());
+  H.check(amin === 255, `holes: every pixel of the frame is opaque (min alpha ${amin})`);
+  const terr = await page.evaluate(() => window.__game.depthPixels(500, 100000).length);
+  H.check(terr > 2000, `holes: terrain still fills the view (${terr} grid cells)`);
+  H.check(errors.filter(e => !/Failed to load resource|ERR_FAILED/.test(e)).length === 0, 'holes: no errors apart from the aborted tile loads');
   return browser;
 });

@@ -10,7 +10,7 @@ async function meshChecks(page) {
     const { cols, rows, rings, pos, attr } = m;
     let nanPos = 0, holes = 0;
     for (let i = 0; i < pos.length; i++) if (pos[i] !== pos[i]) nanPos++;
-    for (let i = 0; i < cols * rows; i++) if (attr[i * 4 + 3] < -1e8) holes++;
+    for (let i = 0; i < cols * rows; i++) if (attr[i * 6 + 3] === -32768) holes++;
     let nanAttr = 0; for (let i = 0; i < attr.length; i++) if (attr[i] !== attr[i]) nanAttr++;
     let ratioErr = 0; const r0 = rings[1] / rings[0];
     for (let r = 1; r < rows; r++) ratioErr = Math.max(ratioErr, Math.abs(rings[r] / rings[r - 1] - r0));
@@ -30,9 +30,25 @@ async function meshChecks(page) {
       const e = pos[i * 3], n = pos[i * 3 + 1], lo = rings[p.r] / q, hi = rings[p.r] * q;
       posErr = Math.max(posErr, p.d < lo - 0.01 ? lo - p.d : p.d > hi + 0.01 ? p.d - hi : 0);
       azErr = Math.max(azErr, Math.abs(Math.atan2(e, n) - (p.az > Math.PI ? p.az - 2 * Math.PI : p.az)));
-      if (ref[k] === ref[k] && attr[i * 4 + 3] > -1e8) { compared++; maxErr = Math.max(maxErr, Math.abs(h - ref[k])); }
+      if (ref[k] === ref[k] && attr[i * 6 + 3] !== -32768) { compared++; maxErr = Math.max(maxErr, Math.abs(h - ref[k])); }
     });
-    return { ms, cols, rows, verts: pos.length / 3, attrLen: attr.length, idxLen: m.index.length, ring0: rings[0], ringN: rings[rows - 1], ratioErr, nanPos, nanAttr, holes, maxErr, compared, posErr, azErr };
+    // valley floor (attr[4]): never above the vertex, far below a summit, close under a valley bottom
+    let floorBad = 0, floorSeen = 0;
+    for (let k = 0; k < 20; k++) {
+      const i = Math.floor(rnd() * cols * rows); if (attr[i * 6 + 3] === -32768) continue;
+      floorSeen++; const dh = pos[i * 3 + 2] - attr[i * 6 + 4];
+      if (!(dh >= -1 && dh < 6000)) floorBad++;
+    }
+    const pk = window.__game.CUR.peaks.find(q => q.name === 'Dunagiri');
+    const pc = Math.round(((pk.az % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) / (2 * Math.PI) * cols) % cols;
+    let pr = 0; for (let r = 0; r < rows; r++) if (Math.abs(rings[r] - pk.d) < Math.abs(rings[pr] - pk.d)) pr = r;
+    let summitRise = -1e9;                       // the highest vertex within ±2 cells of the summit
+    for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++) { const i = (pr + dr) * cols + (pc + dc + cols) % cols; if (attr[i * 6 + 3] !== -32768) summitRise = Math.max(summitRise, pos[i * 3 + 2] - attr[i * 6 + 4]); }
+    let low = -1;
+    for (let i = 0; i < cols * rows; i++) { const d = Math.hypot(pos[i * 3], pos[i * 3 + 1]); if (d > 3000 && d < 20000 && attr[i * 6 + 3] !== -32768 && (low < 0 || pos[i * 3 + 2] < pos[low * 3 + 2])) low = i; }
+    const lowRise = low < 0 ? NaN : pos[low * 3 + 2] - attr[low * 6 + 4];
+    const peakMB = window.__game.stats().meshPeakMB, isI16 = attr instanceof Int16Array;
+    return { floorBad, floorSeen, summitRise, lowRise, peakMB, isI16, ms, cols, rows, verts: pos.length / 3, attrLen: attr.length, idxLen: m.index.length, ring0: rings[0], ringN: rings[rows - 1], ratioErr, nanPos, nanAttr, holes, maxErr, compared, posErr, azErr };
   });
 }
 
@@ -43,7 +59,11 @@ H.run('mesh: polar grid around the viewer', async (keep) => {
   const a = await meshChecks(page);
   console.log(`  pangarchulla mesh built in ${(a.ms / 1000).toFixed(2)} s`);
   H.check(a.verts === a.cols * a.rows && a.cols === 2048 && a.rows === 600, `vertex count ${a.verts} = ${a.cols}×${a.rows}`);
-  H.check(a.attrLen === a.verts * 4, 'attr has 4 floats per vertex');
+  H.check(a.isI16 && a.attrLen === a.verts * 6, 'attr is an Int16Array with 6 values per vertex');
+  H.check(a.floorSeen >= 15 && a.floorBad === 0, `valley floor is at or below the vertex on ${a.floorSeen} random vertices`);
+  H.check(a.summitRise > 1500, `Dunagiri's summit stands ${Math.round(a.summitRise)} m above its valley floor (> 1500)`);
+  H.check(a.lowRise < 150, `the lowest ground within 20 km is ${Math.round(a.lowRise)} m above its floor (< 150)`);
+  H.check(a.peakMB > 0 && a.peakMB < 45, `mesh build peak ${a.peakMB && a.peakMB.toFixed(1)} MB < 45`);
   H.check(a.idxLen === a.cols * (a.rows - 1) * 6, `index covers the wrapped grid (${a.idxLen})`);
   H.check(Math.abs(a.ring0 - 12) < 1e-3 && Math.abs(a.ringN - 235000) < 1, `rings ${a.ring0.toFixed(3)} … ${a.ringN.toFixed(1)} m`);
   H.check(a.ratioErr < 1e-6 * 2, `ring ratio constant (max deviation ${a.ratioErr.toExponential(2)})`);
