@@ -1,6 +1,6 @@
 # Himalaya Skyline v3: WebGL renderer and art direction
 
-Status: draft for owner approval · 15 November 2026
+Status: **approved by the owner** · 15 November 2026
 
 ## 1. Intent
 
