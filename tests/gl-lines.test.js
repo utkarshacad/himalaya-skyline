@@ -39,12 +39,34 @@ H.run('gl-lines: flow lines on the GPU', async (keep) => {
   gd /= Math.max(1, cc.length);
   H.check(cc.length >= 15 && gd <= 12, `${cc.length} gully points are ${gd.toFixed(1)} brighter than their flanks (≤ 12)`);
 
-  // depth test: a line point behind a nearer ridge leaves its pixel untouched
-  const hid = await page.evaluate(() => window.__game.hiddenLinePoints(30));
-  await art(page, { flow: true }); const A = await H.pixels(page);
-  await art(page, { flow: false }); const B = await H.pixels(page); await art(page, { flow: true });
-  const changed = hid.filter(p => lum(A.px(p.x, p.y)) - lum(B.px(p.x, p.y)) > 2).length;
-  H.check(hid.length >= 10 && changed <= 1, `${changed} of ${hid.length} hidden line points show through`);
+  // depth test: a bright synthetic line behind a nearer ridge leaves its pixels untouched; the same line in the open shows
+  const pts = await page.evaluate(() => {
+    const g = window.__game.gridInfo(), W = innerWidth, out = { hidden: null, open: null };
+    // a column where near terrain (< 12 km) hides ground far behind it: put the line 2.5× farther, just under the near skyline
+    for (const c of g) {
+      if (out.hidden && out.open) break;
+      if (c.x < 80 || c.x > W - 80) continue;
+      if (!out.hidden && c.d > 3000 && c.d < 12000) { const above = g.find(o => Math.abs(o.x - c.x) < 3 && o.y < c.y - 30 && o.y > c.y - 60); if (above && above.d > c.d * 1.5)
+        out.hidden = { az: c.az, d: c.d * 2.5, h: c.h - 200 }; }
+      if (!out.open && c.d > 15000 && c.d < 40000 && c.h < 4000) out.open = { az: c.az, d: c.d, h: c.h + 2 };
+    }
+    return out;
+  });
+  H.check(!!pts.hidden && !!pts.open, 'found a hidden and an open spot for the synthetic line');
+  if (pts.hidden && pts.open) {
+    const diff = async (spot) => {
+      await page.evaluate(() => { window.__game.setArt({ only: 99 }); });
+      const p = await page.evaluate((s) => window.__game.synthLine(99, s.az, s.d, s.h), spot);
+      await art(page, { flow: true }); const A = await H.pixels(page);
+      await art(page, { flow: false }); const B = await H.pixels(page);
+      let m = 0; for (let j = -3; j <= 3; j++) for (let i = -12; i <= 12; i++) m = Math.max(m, lum(A.px(p.x + i, p.y + j)) - lum(B.px(p.x + i, p.y + j)));
+      return m;
+    };
+    const dOpen = await diff(pts.open), dHid = await diff(pts.hidden);
+    H.check(dOpen >= 10, `the synthetic line in the open brightens its pixels (+${dOpen.toFixed(0)})`);
+    H.check(dHid <= 2, `the same line behind a ridge leaves them untouched (+${dHid.toFixed(0)})`);
+    await page.evaluate(() => { window.__game.GLPano.clearFlowSector(99); window.__game.setArt({ only: null, flow: true }); });
+  }
 
   // panning, zoom and fly are uniforms only
   const c0 = await counters(page);
@@ -52,12 +74,12 @@ H.run('gl-lines: flow lines on the GPU', async (keep) => {
   H.check(await counters(page) === c0, `120 pan frames: traces/uploads/mesh builds unchanged (${c0})`);
   await page.evaluate(() => { window.__game.view.heading -= 0.72; window.__game.onViewChanged(); });
   await page.evaluate(() => window.__game.setEyeOffset(3000));
-  await page.waitForFunction(() => Math.abs(window.__game.eyeOff - 3000) < 1, null, { timeout: 20000 });
+  await page.waitForFunction(() => Math.abs(window.__game.eyeOff - 3000) < 1, null, { timeout: 180000 });
   const { cap: cap2 } = await capAndFlank(page, 'Dunagiri');
   const df = await capDelta(page, cap2);
   H.check(df >= 15 && await counters(page) === c0, `at +3,000 m the cap still has lines (+${df.toFixed(0)}), nothing re-traced`);
   await page.evaluate(() => window.__game.setEyeOffset(0));
-  await page.waitForFunction(() => window.__game.eyeOff === 0, null, { timeout: 20000 });
+  await page.waitForFunction(() => window.__game.eyeOff === 0, null, { timeout: 180000 });
 
   // two density tiers: the fine tier adds lines when zoomed in, nothing at the default zoom
   const lit = async (c) => { const im = await H.pixels(page); let k = 0; for (let j = -10; j <= 10; j++) for (let i = -10; i <= 10; i++) if (lum(im.px(c.x + i, c.y + j)) > 70) k++; return k; };

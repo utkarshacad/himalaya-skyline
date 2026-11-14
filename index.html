@@ -1136,7 +1136,9 @@ void main() {
           * (1.0 - uGullyK * sm(0.0, 1.0, -conv))
           * (tier < 0.5 ? uTier0 : uTier1);
   vA = drop ? 0.0 : a; vSide = side * uHalfW; vU = u;
-  float z = clamp((d * 0.997 - 25.0) / uFar, 0.0, 1.0) * 2.0 - 1.0;
+  // the mesh sits on the highest point of each ring cell, a little above the true ground the lines follow, so
+  // lines pass the depth test within 3 % + 40 m of the terrain in front of them (the spike's visibility rule)
+  float z = clamp((d * 0.97 - 40.0) / uFar, 0.0, 1.0) * 2.0 - 1.0;
   gl_Position = drop ? vec4(2.0, 2.0, 2.0, 1.0) : vec4(q.x / (uW * 0.5), q.y / (uH * 0.5), z, 1.0);
 }
 </script>
@@ -1964,8 +1966,9 @@ const GLPano = (() => {
       const b0 = Math.floor(wrap(v.heading - v.hfov / 2) / TAU * 64) - 1, nb = Math.ceil(v.hfov / TAU * 64) + 3;
       let w0 = 0, w1 = 0; for (let i = 0; i < Math.min(64, nb); i++) { const b = ((b0 + i) % 64 + 64) % 64; if (b < 32) w0 |= 1 << b; else w1 |= 1 << (b - 32); }
       const now = performance.now();
-      for (const S of P.sectors) {
-        if (!S || !((S.m0 & w0) | (S.m1 & w1))) continue;
+      for (let k = 0; k < P.sectors.length; k++) {
+        const S = P.sectors[k];
+        if (!S || (P.art.only != null && k !== P.art.only) || !((S.m0 & w0) | (S.m1 & w1))) continue;
         const f = Math.min(1, (now - S.t0) / 600); if (f < 1) P.fading = true;
         gl.uniform1f(ul.uFade, f * f * (3 - 2 * f));
         gl.bindVertexArray(S.va); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, S.n - 1); stats.lineDraws++;
@@ -3325,6 +3328,15 @@ window.__game = { VIEWPOINTS, get CUR() { return CUR; }, view, selectVp, enterVi
   flowMode: () => GLPano.flowMode,
   setFov,
   keepFlow: () => { flowKeep = []; },
+  // a synthetic flow-line sector: 10 identical bright lines across the azimuth at a point; returns its css position
+  synthLine: (k, az, d, h) => {
+    const n = 8, reps = 10, buf = new ArrayBuffer(n * reps * FLOW_BYTES), F = new Float32Array(buf), B = new Uint8Array(buf);
+    for (let r = 0; r < reps; r++) for (let j = 0; j < n; j++) { const i = r * n + j, a = az + (j - (n - 1) / 2) * 0.0015;
+      F[i * 4] = d * Math.sin(a); F[i * 4 + 1] = d * Math.cos(a); F[i * 4 + 2] = h;
+      B[i * 16 + 12] = j === n - 1 ? 255 : Math.round(j / (n - 1) * 254); B[i * 16 + 13] = 255; B[i * 16 + 14] = 255; B[i * 16 + 15] = j === n - 1 ? 2 : 0; }
+    GLPano.setFlowSector(k, buf, false); needDraw = true;
+    return project(az, d, h);
+  },
   // the most concave terrain on screen between 3 and 40 km (gully bottoms): css positions
   concaveCells: async (n) => {
     const g = window.__game.gridInfo().filter(c => c.d > 3000 && c.d < 40000 && c.x > 12 && c.x < cssSize().W - 12 && c.y > 4);
