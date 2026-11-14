@@ -131,6 +131,8 @@ v3 moves drawing to the GPU (WebGL2) and adopts the approved art direction. The 
 
 The constants come from `docs/art/reference-flowlines-spike.js`, which produced the target image.
 
+**Lesson from the last spike** (`docs/art/lesson-soft-layer-too-strong.png`): taper plus `1 − e^(−2.6·v)` compression removed the hard streaks and abrupt ends, but at that strength the caps became solid white and stray specks appeared. Start the compression gain near **0.8** (not 2.6), skip the canvas blur (it brightened isolated short lines into specks), and tune against `target-dark-summit-noir.png`, where the cap brightness is right.
+
 ### 7.6 Rivers
 - The smoothed polylines from v2.1 go through the same line pipeline:
   - one halo pass;
