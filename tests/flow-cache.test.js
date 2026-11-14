@@ -17,7 +17,8 @@ H.run('flow-cache: trace once, store, reuse', async (keep) => {
   H.check(st.flowTraces === 16, `16 worker traces (${st.flowTraces})`);
   const total = L.reduce((s, e) => s + e.verts, 0);
   H.check(total > 20000, `${total} line vertices in all`);
-  H.check((await keys(page)).includes('pangarchulla@1'), 'stored under pangarchulla@1');
+  const PK = 'pangarchulla@' + (await page.evaluate(() => window.__game.FLOW.ALGO)), KK = PK.replace('pangarchulla', 'kausani');
+  H.check((await keys(page)).includes(PK), 'stored under ' + PK);
 
   await page.evaluate(() => window.__game.goHome()); await page.waitForTimeout(1200);
   await page.evaluate(() => { window.__game.flowLog.length = 0; });
@@ -37,11 +38,11 @@ H.run('flow-cache: trace once, store, reuse', async (keep) => {
   await page.waitForFunction(() => window.__game.ready(), null, { timeout: 90000, polling: 200 }); await waitDone(page, 60000);
   await page.waitForTimeout(3000);                                  // let any stale kausani work finish
   L = await log(page);
-  H.check(L.length === 16 && L.every(e => e.key === 'pangarchulla@1'), `after the switch only pangarchulla's 16 sectors arrived (${L.map(e => e.key).filter(k => k !== 'pangarchulla@1').length} stray)`);
-  H.check(!(await keys(page)).includes('kausani@1'), 'no half-traced kausani record in the store');
+  H.check(L.length === 16 && L.every(e => e.key === PK), `after the switch only pangarchulla's 16 sectors arrived (${L.map(e => e.key).filter(k => k !== PK).length} stray)`);
+  H.check(!(await keys(page)).includes(KK), 'no half-traced kausani record in the store');
 
   // a damaged record is ignored and replaced
-  await page.evaluate(() => window.__game.FlowStore.put('pangarchulla@1', { sectors: [new ArrayBuffer(7)] }));
+  await page.evaluate((k) => window.__game.FlowStore.put(k, { sectors: [new ArrayBuffer(7)] }), PK);
   await page.evaluate(() => { window.__game.goHome(); window.__game.flowLog.length = 0; }); await page.waitForTimeout(1200);
   const t0 = (await page.evaluate(() => window.__game.stats())).flowTraces;
   await H.enter(page, 'pangarchulla'); await waitDone(page);
@@ -74,7 +75,7 @@ H.run('flow-cache: trace once, store, reuse', async (keep) => {
   await page.evaluate(() => window.__game.FlowStore.clear());
   await H.enter(page, 'pangarchulla'); await waitDone(page);
   H.check((await log(page)).length === 16, 'missing tiles: 16 sectors arrive');
-  H.check(!(await keys(page)).includes('pangarchulla@1'), 'missing tiles: nothing is stored');
+  H.check(!(await keys(page)).includes(PK), 'missing tiles: nothing is stored');
   H.check(realErrors(errors).length === 0, 'missing tiles: no errors apart from the aborted loads');
   return browser;
 });
