@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Himalaya Skyline</title>
 <meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#232427">
 <style>
 /* Layout: full-screen stage. Home = 2D/3D map with viewpoints; play = PeakFinder-style panorama with thin chrome. */
 :root {
@@ -22,6 +23,19 @@
   --f-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --f-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   color-scheme: dark;
+  /* panorama theme (dark = PeakFinder's dark theme) */
+  --pano-bg: #232427; --stem: rgba(255,255,255,.72); --lbl-fg: #ffffff; --lbl-bg: rgba(26,27,30,.8);
+  --q-line: #ffffff; --q-bg: rgba(20,21,24,.62); --q-fg: #ffffff; --river-shadow: 0 1px 3px #000;
+  --rb-bg: rgba(26,27,30,.9); --rb-hover: rgba(48,50,55,.95); --rose-txt: #e9ebee; --rose-bg: rgba(26,27,30,.85);
+  --ruler-bg: linear-gradient(0deg, rgba(23,24,27,.9), rgba(23,24,27,0));
+  --scope: #ffffff; --scope-dim: rgba(0,0,0,.16); --scope-x: #4fb3ff; --scope-txt: #ffffff;
+}
+body[data-theme=light] {
+  --pano-bg: #ffffff; --stem: rgba(21,23,26,.7); --lbl-fg: #15171a; --lbl-bg: rgba(255,255,255,.9);
+  --q-line: #15171a; --q-bg: rgba(255,255,255,.8); --q-fg: #15171a; --river: #1677c9; --river-shadow: 0 0 3px #fff, 0 0 6px #fff;
+  --rose-txt: #15171a; --rose-bg: rgba(255,255,255,.88);
+  --ruler-bg: linear-gradient(0deg, rgba(255,255,255,.92), rgba(255,255,255,0));
+  --scope: #15171a; --scope-dim: rgba(255,255,255,.14); --scope-x: #1e88e5; --scope-txt: #15171a;
 }
 html, body { height: 100%; margin: 0; }
 [hidden] { display: none !important; }
@@ -32,6 +46,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .view { position: absolute; inset: 0; transition: opacity .7s ease; }
 .view.fade { opacity: 0; pointer-events: none; }
 #map { position: absolute; inset: 0; background: #1b2430; }
+body[data-theme=light] #map { background: #eceef0; }
+body[data-theme=light] #home .bar { background: linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,0)); color: #15171a; }
+body[data-theme=light] .brand span { color: #5b6370; }
+body[data-theme=light] .vp-marker .nm { color: #15171a; text-shadow: 0 0 3px #fff, 0 0 8px #fff; }
+body[data-theme=light] .river-lbl { color: #1677c9; text-shadow: 0 0 3px #fff, 0 0 6px #fff; }
 
 /* ---------- Chrome shared ---------- */
 .bar {
@@ -98,84 +117,172 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .grid .pip.sel { box-shadow: 0 0 0 3px rgba(255,255,255,.35); }
 .grid-note { font-size: 11px; color: var(--muted); margin-top: 8px; max-width: 290px; line-height: 1.4; }
 
-/* ---------- Panorama ---------- */
+/* ---------- Panorama (PeakFinder-style: monochrome line drawing, round icon buttons, nothing parked over the view) ---------- */
 #pano, #fx { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#pano { background: var(--pano-bg); }
 #fx { pointer-events: none; }
 #stage { position: absolute; inset: 0; touch-action: none; cursor: grab; }
 #stage.dragging { cursor: grabbing; }
 #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 
 .pk { position: absolute; left: 0; top: 0; pointer-events: none; will-change: transform; }
-.pk .stem { position: absolute; left: 0; bottom: 0; width: 1px; background: rgba(242,246,251,.85); transform-origin: bottom; }
+.pk .stem { position: absolute; left: 0; top: 0; width: 1px; background: var(--stem); }
 .pk .txt {
-  position: absolute; left: 2px; bottom: 0; transform-origin: 0 100%; transform: rotate(-45deg);
-  white-space: nowrap; font-size: 13px; color: var(--text); text-shadow: 0 1px 2px #000, 0 0 6px rgba(0,0,0,.7);
+  position: absolute; left: -3px; top: 0; transform-origin: 0 50%; transform: rotate(-52deg);
+  white-space: nowrap; font-size: 13px; line-height: 1; letter-spacing: .01em; color: var(--lbl-fg);
+  background: var(--lbl-bg); padding: 4px 7px 4px 6px; border-radius: 6px; pointer-events: auto; cursor: pointer;
 }
-.pk .txt small { color: var(--muted); font-size: 11px; margin-left: 5px; }
-.pk.solved .stem { background: var(--accent); }
-.pk.solved .txt { color: #ffd38a; }
-.pk.minor .txt { font-size: 11px; color: #c4cfdd; }
-.pk.minor .stem { background: rgba(242,246,251,.45); }
+.pk .txt small { font-size: 10.5px; margin-left: 5px; opacity: .78; font-variant-numeric: tabular-nums; }
+.pk .txt small i { font-style: normal; font-size: 8.5px; margin-left: 1px; }
+.pk .txt .mk { color: var(--accent); margin-right: 4px; font-size: 11px; }
+.pk.solved .txt { box-shadow: inset 0 -1.5px 0 var(--accent); }
+.pk.sel .txt { background: var(--accent); color: #1a1206; }
+.pk.sel .stem { background: var(--accent); }
 
 .q {
   position: absolute; left: 0; top: 0; pointer-events: auto; cursor: pointer;
   width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%;
-  border: 1.5px solid #fff; background: rgba(8,12,20,.6); color: #fff;
+  border: 1.5px solid var(--q-line); background: var(--q-bg); color: var(--q-fg);
   display: grid; place-items: center; font: 600 15px/1 var(--f-ui);
   box-shadow: 0 0 0 0 rgba(245,166,35,.6); animation: pulse 2.4s infinite;
+  transition: background .2s, color .2s, border-color .2s;
 }
 .q:hover, .q.active { background: var(--accent); color: #1a1206; border-color: var(--accent); }
-.q-stem { position: absolute; width: 1px; background: rgba(255,255,255,.7); pointer-events: none; }
+.q-stem { position: absolute; width: 1px; background: var(--stem); pointer-events: none; }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(245,166,35,.55); } 70% { box-shadow: 0 0 0 12px rgba(245,166,35,0); } 100% { box-shadow: 0 0 0 0 rgba(245,166,35,0); } }
 
-.river-tag { position: absolute; left: 0; top: 0; font: italic 12px/1 var(--f-ui); color: var(--river); text-shadow: 0 1px 3px #000; white-space: nowrap; pointer-events: none; }
+.river-tag { position: absolute; left: 0; top: 0; font: italic 500 12px/1 var(--f-ui); color: var(--river); text-shadow: var(--river-shadow); white-space: nowrap; pointer-events: none; letter-spacing: .03em; }
+
+/* round icon buttons, like PeakFinder's */
+.rb {
+  width: 48px; height: 48px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
+  display: grid; place-items: center; background: var(--rb-bg); color: #f4f5f7;
+  box-shadow: 0 2px 10px rgba(0,0,0,.28); transition: background .2s, transform .25s cubic-bezier(.2,.8,.2,1);
+  -webkit-tap-highlight-color: transparent;
+}
+.rb:hover { background: var(--rb-hover); }
+.rb:active { transform: scale(.94); }
+.rb.on { background: var(--accent); color: #1a1206; }
+.rb svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.rb.sm { width: 40px; height: 40px; }
+.rb.sm svg { width: 20px; height: 20px; }
+.corner { position: absolute; z-index: 20; display: flex; gap: 10px; align-items: center; }
+.c-tl { left: max(14px, env(safe-area-inset-left, 0px)); top: calc(12px + env(safe-area-inset-top, 0px)); }
+.c-tr { right: max(14px, env(safe-area-inset-right, 0px)); top: calc(12px + env(safe-area-inset-top, 0px)); flex-direction: column; align-items: flex-end; gap: 6px; }
+.c-bl { left: max(14px, env(safe-area-inset-left, 0px)); bottom: calc(40px + env(safe-area-inset-bottom, 0px)); flex-direction: column-reverse; align-items: flex-start; }
+.c-br { right: max(14px, env(safe-area-inset-right, 0px)); bottom: calc(40px + env(safe-area-inset-bottom, 0px)); flex-direction: column; }
+.c-ml { left: max(14px, env(safe-area-inset-left, 0px)); top: 50%; transform: translateY(-50%); flex-direction: column; gap: 0; }
+.pill {
+  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: 999px;
+  background: var(--rb-bg); color: #f4f5f7; font-size: 13px; white-space: nowrap; box-shadow: 0 2px 10px rgba(0,0,0,.22);
+}
+.pill small { color: #b5bac3; font-size: 12px; }
+.pill b { font-weight: 600; }
+
+/* fly-up control: one rounded stack, like PeakFinder's up/down chevrons */
+.fly { display: grid; justify-items: center; background: var(--rb-bg); border-radius: 26px; padding: 4px 0; box-shadow: 0 2px 10px rgba(0,0,0,.28); }
+.fly button { width: 48px; height: 42px; border: 0; background: transparent; color: #f4f5f7; cursor: pointer; display: grid; place-items: center; border-radius: 22px; }
+.fly button:hover { background: rgba(255,255,255,.08); }
+.fly button:disabled { opacity: .3; cursor: default; }
+.fly svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.fly .alt { font: 600 10.5px/1 var(--f-mono); color: #c9ced6; padding: 3px 0; min-height: 11px; }
+.fly .alt.up { color: var(--accent); }
+
+/* compass rose (top right) */
+#rose svg { width: 30px; height: 30px; transition: none; }
+#rose-deg { font: 600 11px/1 var(--f-mono); color: var(--rose-txt); background: var(--rose-bg); padding: 4px 7px; border-radius: 999px; }
 
 #mini {
-  position: absolute; z-index: 15; left: max(14px, env(safe-area-inset-left, 0px)); top: calc(62px + env(safe-area-inset-top, 0px));
-  width: 150px; height: 150px; border-radius: 12px; border: 1px solid var(--chrome-line); background: rgba(8, 12, 20, .75);
+  width: 168px; height: 168px; border-radius: 50%; background: rgba(18,19,22,.82);
+  box-shadow: 0 6px 24px rgba(0,0,0,.35); transform-origin: 85% 0; transition: transform .35s cubic-bezier(.2,.8,.2,1), opacity .25s;
 }
-#compass {
-  position: absolute; z-index: 15; left: 0; right: 0; bottom: 0; height: calc(40px + env(safe-area-inset-bottom, 0px));
-  background: linear-gradient(0deg, rgba(5,10,20,.9), rgba(5,10,20,.0)); pointer-events: none;
+#mini.off { transform: scale(.4); opacity: 0; pointer-events: none; }
+
+/* degree ruler along the bottom edge */
+#compass { position: absolute; z-index: 15; left: 0; right: 0; bottom: 0; height: calc(30px + env(safe-area-inset-bottom, 0px)); background: var(--ruler-bg); pointer-events: none; }
+#compass canvas { width: 100%; height: 30px; display: block; }
+
+/* sliders popover (opens upward from the bottom-left button) */
+#tune {
+  position: absolute; z-index: 32; left: max(14px, env(safe-area-inset-left, 0px)); bottom: calc(98px + env(safe-area-inset-bottom, 0px));
+  width: min(300px, calc(100vw - 28px)); box-sizing: border-box; padding: 14px; border-radius: 18px;
+  background: rgba(20,21,24,.94); color: #eef0f3; box-shadow: 0 14px 40px rgba(0,0,0,.45); display: grid; gap: 14px;
+  transform-origin: 0 100%; transition: transform .28s cubic-bezier(.2,.8,.2,1), opacity .2s;
 }
-#compass canvas { width: 100%; height: 40px; display: block; }
-.zoom { position: absolute; z-index: 16; right: max(14px, env(safe-area-inset-right, 0px)); bottom: calc(52px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 6px; }
+#tune.off { transform: scale(.85) translateY(10px); opacity: 0; pointer-events: none; }
+#tune .lab { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; color: #aab0ba; margin-bottom: 7px; }
+#tune .lab b { color: #fff; font: 600 12px var(--f-mono); }
+#tune input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: rgba(255,255,255,.07); border-radius: 10px; padding: 3px; gap: 3px; }
+.seg button { border: 0; border-radius: 8px; padding: 7px 4px; background: transparent; color: #cfd3da; font-size: 12.5px; cursor: pointer; }
+.seg button.on { background: #f4f5f7; color: #15171a; font-weight: 600; }
+
+/* telescope reticle + info bar */
+#scope { position: absolute; z-index: 12; left: 50%; top: 50%; width: 132px; height: 132px; margin: -66px 0 0 -66px; pointer-events: none; transition: opacity .25s, transform .3s cubic-bezier(.2,.8,.2,1); }
+#scope.off { opacity: 0; transform: scale(.7); }
+#scope .ring { position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid var(--scope); box-shadow: 0 0 0 2000px var(--scope-dim); }
+#scope .x { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; }
+#scope .x::before, #scope .x::after { content: ''; position: absolute; background: var(--scope-x); }
+#scope .x::before { left: 0; right: 0; top: 50%; height: 1.5px; margin-top: -.75px; }
+#scope .x::after { top: 0; bottom: 0; left: 50%; width: 1.5px; margin-left: -.75px; }
+#scope .x i { position: absolute; inset: 14px; border-radius: 50%; border: 1.5px solid var(--scope-x); }
+#scope .rd { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); font: 600 11px/1 var(--f-mono); color: var(--scope-txt); white-space: nowrap; }
+
+#info {
+  position: absolute; z-index: 19; left: 50%; bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+  width: min(470px, calc(100vw - 150px)); box-sizing: border-box; transform: translateX(-50%);
+  background: rgba(20,21,24,.92); color: #eef0f3; border-radius: 18px; padding: 10px 12px 10px 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.35); display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center;
+  transition: transform .3s cubic-bezier(.2,.8,.2,1), opacity .22s;
+}
+#info.off { transform: translate(-50%, 16px); opacity: 0; pointer-events: none; }
+#info .nm { font-size: 15px; font-weight: 600; }
+#info .nm small { font-weight: 500; color: #b5bac3; font-size: 13px; margin-left: 6px; }
+#info .meta { font: 12px/1.4 var(--f-mono); color: #9ca3ad; }
+#info .txt { grid-column: 1 / -1; font-size: 13px; line-height: 1.45; color: #d7dbe1; }
+#info .txt:empty { display: none; }
+#info .acts { display: flex; gap: 6px; grid-row: 1 / span 2; grid-column: 2; }
+#info .acts:empty { display: none; }
+.mark { width: 38px; height: 38px; border-radius: 50%; border: 0; background: rgba(255,255,255,.08); color: #e7e9ec; cursor: pointer; display: grid; place-items: center; transition: background .2s, color .2s, transform .25s cubic-bezier(.3,1.6,.5,1); }
+.mark svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.mark.on { color: #1a1206; background: var(--accent); }
+.mark.on svg { fill: currentColor; }
+.mark.pop { transform: scale(1.22); }
+.mark.txtbtn { width: auto; padding: 0 14px; border-radius: 19px; font-size: 13px; font-weight: 600; background: var(--accent); color: #1a1206; }
+
+#vpbar { position: absolute; z-index: 16; left: 50%; bottom: calc(40px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); transition: opacity .2s; }
+#vpbar.off { opacity: 0; pointer-events: none; }
+#vpbar svg { width: 15px; height: 15px; fill: currentColor; }
+
+/* fly-up film: low-res frames cross-fading while the full panorama renders */
+#veil { position: absolute; inset: 0; pointer-events: none; background: var(--pano-bg); opacity: 0; transition: opacity .5s ease; z-index: 1; }
 
 #guess {
   position: absolute; z-index: 30; width: min(320px, calc(100vw - 28px));
-  background: var(--chrome); border: 1px solid var(--chrome-line); border-radius: 14px; padding: 12px;
-  display: grid; gap: 8px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 12px 40px rgba(0,0,0,.5);
+  background: rgba(20,21,24,.94); color: #eef0f3; border-radius: 16px; padding: 12px;
+  display: grid; gap: 8px; box-shadow: 0 14px 40px rgba(0,0,0,.45);
 }
-#guess .top { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); }
+#guess .top { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #aab0ba; }
 #guess input {
-  width: 100%; box-sizing: border-box; border-radius: 10px; border: 1px solid var(--chrome-line);
-  background: rgba(0,0,0,.35); color: var(--text); font: 16px var(--f-ui); padding: 10px 12px;
+  width: 100%; box-sizing: border-box; border-radius: 10px; border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.35); color: #fff; font: 16px var(--f-ui); padding: 10px 12px;
 }
-#guess .msg { font-size: 13px; min-height: 18px; color: var(--muted); }
+#guess .msg { font-size: 13px; min-height: 18px; color: #aab0ba; }
 #guess .msg.bad { color: var(--bad); } #guess .msg.good { color: var(--good); }
 #guess.shake { animation: shake .35s; }
+#guess .btn { color: #eef0f3; }
 @keyframes shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
 .ac { display: grid; gap: 2px; max-height: 180px; overflow: auto; }
-.ac button { text-align: left; border: 0; background: transparent; color: var(--text); padding: 7px 8px; border-radius: 8px; font-size: 14px; cursor: pointer; }
+.ac button { text-align: left; border: 0; background: transparent; color: #eef0f3; padding: 7px 8px; border-radius: 8px; font-size: 14px; cursor: pointer; }
 .ac button.on, .ac button:hover { background: rgba(255,255,255,.1); }
-.ac button small { color: var(--muted); margin-left: 6px; }
-
-#fact {
-  position: absolute; z-index: 18; left: 50%; transform: translateX(-50%);
-  bottom: calc(54px + env(safe-area-inset-bottom, 0px)); width: min(460px, calc(100vw - 28px)); box-sizing: border-box;
-  background: var(--chrome); border: 1px solid var(--chrome-line); border-radius: 12px; padding: 10px 14px;
-  font-size: 13.5px; line-height: 1.45; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-}
-#fact b { color: #ffd38a; }
-#fact .meta { font: 12px var(--f-mono); color: var(--muted); }
+.ac button small { color: #aab0ba; margin-left: 6px; }
 
 #done { left: 50%; right: auto; transform: translateX(-50%); bottom: auto; top: 50%; translate: 0 -50%; text-align: center; justify-items: center; }
 #done .big { font: 600 34px/1 var(--f-ui); color: #ffd38a; }
 
 #loader {
-  position: absolute; z-index: 40; left: 50%; bottom: calc(70px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
-  background: var(--chrome); border: 1px solid var(--chrome-line); border-radius: 999px; padding: 8px 16px;
+  position: absolute; z-index: 40; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: var(--chrome); border: 1px solid var(--chrome-line); border-radius: 999px; padding: 8px 16px; color: var(--text);
   font-size: 13px; display: flex; align-items: center; gap: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
 }
 #loader .track { width: 120px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.12); overflow: hidden; }
@@ -185,14 +292,17 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 
 @media (max-width: 640px) {
   .brand span, .hide-sm { display: none; }
-  #mini { width: 110px; height: 110px; }
+  #mini { width: 120px; height: 120px; }
+  .rb { width: 44px; height: 44px; }
   .grid { grid-template-columns: auto repeat(4, 44px); }
   .grid-panel { padding: 10px; }
   .grid-note { display: none; }
   .card { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
   .has-card .grid-panel { display: none; }
+  #info { width: calc(100vw - 28px); bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+  .pk .txt { font-size: 12px; }
 }
-@media (prefers-reduced-motion: reduce) { .q { animation: none; } .view { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .q { animation: none; } .view, #info, #tune, #mini, #scope { transition: none; } }
 </style>
 </head>
 <body>
@@ -229,24 +339,55 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 <section id="play" class="view fade" aria-label="Panorama">
   <canvas id="pano"></canvas>
   <canvas id="fx"></canvas>
+  <div id="veil"></div>
   <div id="stage"><div id="labels"></div></div>
-  <canvas id="mini" aria-label="Mini map"></canvas>
+  <div id="scope" class="off" aria-hidden="true"><div class="ring"></div><div class="x"><i></i></div><div class="rd" id="scope-rd"></div></div>
   <div id="compass"><canvas id="compass-c"></canvas></div>
 
-  <div class="bar">
-    <button class="btn" id="to-map">‹ Map</button>
-    <div class="chip"><b id="pl-name"></b><small class="hide-sm" id="pl-cell"></small></div>
-    <div class="spacer"></div>
-    <div class="chip"><small>Peaks</small> <b id="pl-progress">0/0</b></div>
-    <button class="btn hide-sm" id="names-toggle">Show all names</button>
+  <div class="corner c-tl">
+    <button class="rb" id="to-map" aria-label="Back to the map" title="Back to the map"><svg viewBox="0 0 24 24"><path d="M9 4 3 6.5v13.5l6-2.5 6 2.5 6-2.5V4l-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/></svg></button>
+    <div class="pill"><small>Peaks</small><b id="pl-progress">0/0</b></div>
   </div>
 
-  <div class="zoom">
-    <button class="btn icon" id="z-in" aria-label="Zoom in">+</button>
-    <button class="btn icon" id="z-out" aria-label="Zoom out">−</button>
+  <div class="corner c-tr">
+    <button class="rb" id="rose" aria-label="Show the mini map" title="Mini map"><svg viewBox="-16 -16 32 32" id="rose-svg"><g id="rose-needle"><path d="M0 -13 L4.2 0 L-4.2 0 Z" fill="#ff5a4e" stroke="none"/><path d="M0 13 L4.2 0 L-4.2 0 Z" fill="#f4f5f7" stroke="none"/></g><circle r="2" fill="#15171a" stroke="none"/></svg></button>
+    <span id="rose-deg">0°</span>
+    <canvas id="mini" class="off" aria-label="Mini map"></canvas>
   </div>
 
-  <div id="fact" hidden></div>
+  <div class="corner c-ml">
+    <div class="fly" role="group" aria-label="Fly up">
+      <button id="fly-up" aria-label="Fly up" title="Fly up"><svg viewBox="0 0 24 24"><path d="M5 15l7-7 7 7"/></svg></button>
+      <div class="alt" id="fly-alt"></div>
+      <button id="fly-down" aria-label="Fly down" title="Fly down" disabled><svg viewBox="0 0 24 24"><path d="M5 9l7 7 7-7"/></svg></button>
+    </div>
+  </div>
+
+  <div class="corner c-bl">
+    <button class="rb" id="tune-btn" aria-label="Sliders" title="Visibility, theme and labels"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2.2"/><circle cx="8" cy="17" r="2.2"/></svg></button>
+  </div>
+
+  <div class="corner c-br">
+    <button class="rb sm" id="z-in" aria-label="Zoom in"><svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg></button>
+    <button class="rb sm" id="z-out" aria-label="Zoom out"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></button>
+    <button class="rb" id="scope-btn" aria-label="Telescope" title="Telescope: what is in the crosshair?"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
+  </div>
+
+  <div id="tune" class="off" role="dialog" aria-label="Sliders">
+    <div><div class="lab"><span>Visibility range</span><b id="vis-val">150 km</b></div><input type="range" id="vis" min="20" max="230" step="5" value="150" aria-label="Visibility range in kilometres"></div>
+    <div><div class="lab"><span>Theme</span></div><div class="seg" id="seg-theme"><button data-v="dark">Dark</button><button data-v="light">Light</button></div></div>
+    <div><div class="lab"><span>Peak names</span></div><div class="seg" id="seg-labels"><button data-v="quiz">Quiz</button><button data-v="all">All</button><button data-v="marked">Marked</button></div></div>
+    <div><div class="lab"><span>Height contours</span></div><div class="seg" id="seg-contours"><button data-v="on">On</button><button data-v="off">Off</button></div></div>
+  </div>
+
+  <div id="vpbar" class="pill"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg><b id="pl-name"></b><small id="pl-elev"></small></div>
+
+  <div id="info" class="off" aria-live="polite">
+    <div class="nm" id="info-nm"></div>
+    <div class="acts" id="info-acts"></div>
+    <div class="meta" id="info-meta"></div>
+    <div class="txt" id="info-txt"></div>
+  </div>
 
   <div id="guess" hidden role="dialog" aria-label="Name this peak">
     <div class="top"><span id="g-title">Which peak is this?</span><button class="btn" id="g-close" style="padding:3px 9px">✕</button></div>
@@ -301,7 +442,15 @@ function sampleLevel(L, lon, lat) {
 function elevAt(levels, lon, lat, dist) {
   for (let k = 0; k < levels.length; k++) {
     const L = levels[k];
-    if (dist <= L.maxD) { const v = sampleLevel(L, lon, lat); if (v === v) return v; }
+    if (dist <= L.maxD) {
+      const v = sampleLevel(L, lon, lat);
+      if (v === v) {
+        // fade into the next (coarser) level over the last 20 % so no seam shows as a shading band
+        const f0 = L.maxD * 0.8, N = levels[k + 1];
+        if (dist > f0 && N) { const v2 = sampleLevel(N, lon, lat); if (v2 === v2) { const t = (dist - f0) / (L.maxD - f0); return v + (v2 - v) * t; } }
+        return v;
+      }
+    }
   }
   const last = levels[levels.length - 1]; const v = sampleLevel(last, lon, lat);
   return v === v ? v : NaN;
@@ -330,85 +479,117 @@ function lineOfSight(levels, vp, az, dTarget, hTarget) {
 }
 </script>
 
-<!-- Render worker: ray-marches the elevation model into a PeakFinder-style line panorama -->
+<!-- Render workers: each draws vertical strips of the 360° panorama as a PeakFinder-style line drawing -->
 <script id="worker-src" type="text/plain">
-let levels = null, vp = null, pending = null, busy = false;
+let levels = null, vp = null, minGen = 0, busy = false;
+const jobs = [];
 onmessage = (e) => {
   const m = e.data;
   if (m.cmd === 'init') { levels = m.levels; vp = m.vp; buildLUT(vp.lat); postMessage({ cmd: 'ready' }); return; }
-  if (m.cmd === 'render') { pending = m; if (!busy) loop(); return; }
-  if (m.cmd === 'rivers') { postMessage(traceRivers(m), []); return; }
+  if (m.cmd === 'strip') { if (m.gen >= minGen) { jobs.push(m); kick(); } return; }
+  if (m.cmd === 'cancel') { minGen = m.gen; for (let i = jobs.length - 1; i >= 0; i--) if (jobs[i].gen < minGen) jobs.splice(i, 1); return; }
+  if (m.cmd === 'rivers') { postMessage(traceRivers(m)); return; }
   if (m.cmd === 'los') {
-    const out = m.items.map(it => lineOfSight(levels, vp, it.az, it.d, it.h));
-    postMessage({ cmd: 'los', vis: out }); return;
+    const v = { lat: vp.lat, lon: vp.lon, eye: m.eye };
+    postMessage({ cmd: 'los', vis: m.items.map(it => lineOfSight(levels, v, it.az, it.d, it.h)) }); return;
   }
 };
-function loop() {
-  busy = true;
-  while (pending) { const m = pending; pending = null; render(m); }
-  busy = false;
+// one strip per macrotask, so 'cancel' messages get through between strips
+function kick() { if (!busy) { busy = true; setTimeout(step, 0); } }
+function step() {
+  let bi = -1;
+  for (let i = 0; i < jobs.length; i++) if (bi < 0 || jobs[i].prio < jobs[bi].prio) bi = i;
+  if (bi < 0) { busy = false; return; }
+  const m = jobs.splice(bi, 1)[0];
+  if (m.gen >= minGen) renderStrip(m);
+  setTimeout(step, 0);
 }
-function hex(c) { return [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)]; }
-const SKY_TOP = hex('#050a14'), SKY_HOR = hex('#24456b'), SKY_GLOW = hex('#3d6a96');
-const NEAR = hex('#0e1622'), FAR = hex('#3b5575'), SNOW = hex('#9db3cc'), LINE = hex('#f2f6fb');
 
-function render(m) {
-  const { W, H, heading, pitch, ppr, id, quality } = m;
-  const img = new Uint8ClampedArray(W * H * 4);
-  const depth = new Float32Array(W * H);
-  const cx = W / 2, cy = H / 2, eye = vp.eye, maxD = vp.maxD, lat0 = vp.lat, lon0 = vp.lon;
-  const k = quality > 0.75 ? 0.0042 : 0.009, minStep = quality > 0.75 ? 10 : 25;
-  // sky colour per row
-  const sky = new Uint8ClampedArray(H * 3);
+// Front-to-back ray march per column. Each newly visible stretch of terrain is filled with a flat
+// tone (distance haze + slope light); where terrain reappears after being hidden behind a crest,
+// the crest gets an ink line whose weight follows how much ground it hides. Optional faint
+// 100 m contours on the near slopes. Depth is kept (decametres) for rivers and the telescope.
+function renderStrip(m) {
+  const { x0, w, H, ppr, altTop, eye, maxD, T } = m;
+  const img = new Uint8ClampedArray(w * H * 4);
+  const depth = new Uint16Array(w * H);
+  const lat0 = vp.lat, lon0 = vp.lon;
+  const k = m.k || 0.0042, minStep = m.minStep || 8, contours = !!m.contours;
+  const CONT_D = 14000;
+  const sky = new Float32Array(H * 3);
   for (let y = 0; y < H; y++) {
-    const alt = pitch + (cy - y) / ppr;
-    const t = Math.max(0, Math.min(1, alt / 0.6));
-    const g = Math.max(0, 1 - Math.abs(alt) / 0.05);
-    for (let c = 0; c < 3; c++) sky[y * 3 + c] = SKY_HOR[c] + (SKY_TOP[c] - SKY_HOR[c]) * Math.pow(t, 0.6) + (SKY_GLOW[c] - SKY_HOR[c]) * g * 0.6;
+    const alt = altTop - (y + 0.5) / ppr;
+    const t = Math.pow(Math.max(0, Math.min(1, alt / 0.5)), 0.7);
+    for (let c = 0; c < 3; c++) sky[y * 3 + c] = T.skyHor[c] + (T.skyTop[c] - T.skyHor[c]) * t;
   }
-  const lineAlpha = (d) => 1 - 0.6 * Math.min(1, Math.sqrt(d / maxD));
-  function blendLine(x, y, a) {
-    if (y < 0 || y >= H) return;
-    const p = (y * W + x) * 4;
-    img[p] += (LINE[0] - img[p]) * a; img[p + 1] += (LINE[1] - img[p + 1]) * a; img[p + 2] += (LINE[2] - img[p + 2]) * a;
+  const L0 = T.line[0], L1 = T.line[1], L2 = T.line[2];
+  function blend(x, y, a) {
+    if (y < 0 || y >= H || a <= 0) return;
+    const p = (y * w + x) * 4;
+    img[p] += (L0 - img[p]) * a; img[p + 1] += (L1 - img[p + 1]) * a; img[p + 2] += (L2 - img[p + 2]) * a;
   }
-  for (let x = 0; x < W; x++) {
-    const az = heading + (x + 0.5 - cx) / ppr, s = Math.sin(az), c = Math.cos(az);
-    let top = H, lastD = 0, d = 15, prevH = NaN, step = minStep;
+  const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const lineFade = (d) => (1 - 0.45 * Math.sqrt(d / maxD)) * (1 - smooth(maxD * 0.55, maxD, d));
+  const near = T.near, far = T.far, lit = T.lit, shd = T.shadow, snow = T.snow, hor = T.skyHor;
+
+  for (let xi = 0; xi < w; xi++) {
+    const az = (x0 + xi + 0.5) / ppr, s = Math.sin(az), c = Math.cos(az);
+    let top = H, lastD = 0, angTop = 0, prevVis = false, minHid = Infinity, prevH = NaN, prevVisH = NaN, step = minStep, d = 12;
     while (d < maxD) {
       const lat = lat0 + d * c / K_DEG;
       const lon = lon0 + d * s / (K_DEG * Math.cos(lat * 0.017453292519943295));
       const h = elevAt(levels, lon, lat, d);
       if (h === h) {
         const ang = Math.atan2(h - d * d * CURV - eye, d);
-        let yi = Math.ceil(cy - (ang - pitch) * ppr);
+        let yi = Math.ceil((altTop - ang) * ppr);
         if (yi < top) {
           if (yi < 0) yi = 0;
-          const jump = top < H && d > lastD * 1.1 + 250;
-          // colour: distance haze + slope light + a touch of snow
-          const t = Math.pow(Math.min(1, d / maxD), 0.5);
-          const slope = prevH === prevH ? Math.max(-1.2, Math.min(1.2, (h - prevH) / step)) : 0;
-          const light = 1 + slope * 0.16;
-          const sn = Math.max(0, Math.min(1, (h - 4800) / 1400)) * 0.35 * (1 - t * 0.5);
-          let r = (NEAR[0] + (FAR[0] - NEAR[0]) * t), g = (NEAR[1] + (FAR[1] - NEAR[1]) * t), b = (NEAR[2] + (FAR[2] - NEAR[2]) * t);
-          r = (r + (SNOW[0] - r) * sn) * light; g = (g + (SNOW[1] - g) * sn) * light; b = (b + (SNOW[2] - b) * sn) * light;
+          // ---- tone
+          const fd = d / maxD, sf = Math.sqrt(fd);
+          let r = near[0] + (far[0] - near[0]) * sf, g = near[1] + (far[1] - near[1]) * sf, b = near[2] + (far[2] - near[2]) * sf;
+          const slope = prevH === prevH ? Math.max(-1.5, Math.min(1.5, (h - prevH) / step)) : 0;
+          const amt = T.shade * (1 - fd * 0.75) * Math.min(1, Math.abs(slope));
+          const tg = slope > 0 ? lit : shd;
+          r += (tg[0] - r) * amt; g += (tg[1] - g) * amt; b += (tg[2] - b) * amt;
+          const sn = Math.max(0, Math.min(1, (h - 4900) / 1300)) * T.snowAmt * (1 - fd * 0.6);
+          r += (snow[0] - r) * sn; g += (snow[1] - g) * sn; b += (snow[2] - b) * sn;
+          const hz = Math.pow(fd, 1.6) * T.haze;
+          r += (hor[0] - r) * hz; g += (hor[1] - g) * hz; b += (hor[2] - b) * hz;
+          const dv = Math.min(65534, Math.round(d / 10));
           for (let y = yi; y < top; y++) {
-            const p = (y * W + x) * 4; img[p] = r; img[p + 1] = g; img[p + 2] = b; img[p + 3] = 255; depth[y * W + x] = d;
+            const p = (y * w + xi) * 4; img[p] = r; img[p + 1] = g; img[p + 2] = b; img[p + 3] = 255; depth[y * w + xi] = dv;
           }
-          if (jump) { const a = lineAlpha(lastD); blendLine(x, top, a); blendLine(x, top + 1, a * 0.35); }
-          top = yi; lastD = d;
+          // ---- crest line where terrain reappears behind a ridge
+          if (!prevVis && top < H) {
+            const dip = angTop - minHid, drop = dip * lastD;
+            if (dip > 0.0006 && drop > 5) {
+              const a = Math.min(1, 0.2 + drop / 110) * lineFade(lastD);
+              blend(xi, top, a); blend(xi, top + 1, a * 0.28);
+            }
+          }
+          // ---- faint height contours on near slopes
+          if (contours && prevVis && d < CONT_D && prevVisH === prevVisH) {
+            const c1 = Math.floor(prevVisH / 100), c2 = Math.floor(h / 100);
+            if (c1 !== c2 && Math.abs(c2 - c1) === 1) { const major = Math.max(c1, c2) % 5 === 0; blend(xi, yi, (major ? 0.26 : 0.11) * (1 - d / CONT_D)); }
+          }
+          top = yi; angTop = ang; lastD = d; prevVis = true; minHid = Infinity; prevVisH = h;
           if (top <= 0) break;
+        } else {
+          prevVis = false; if (ang < minHid) minHid = ang;
         }
         prevH = h;
       }
       step = Math.max(minStep, d * k); d += step;
     }
     for (let y = 0; y < top; y++) {
-      const p = (y * W + x) * 4; img[p] = sky[y * 3]; img[p + 1] = sky[y * 3 + 1]; img[p + 2] = sky[y * 3 + 2]; img[p + 3] = 255; depth[y * W + x] = Infinity;
+      const p = (y * w + xi) * 4; img[p] = sky[y * 3]; img[p + 1] = sky[y * 3 + 1]; img[p + 2] = sky[y * 3 + 2]; img[p + 3] = 255; depth[y * w + xi] = 65535;
     }
-    if (top > 0 && top < H) { blendLine(x, top, 0.95); blendLine(x, top - 1, 0.25); blendLine(x, top + 1, 0.4); }
+    if (top > 0 && top < H) {
+      const a = 1 - 0.7 * smooth(maxD * 0.7, maxD, lastD);
+      blend(xi, top, a); blend(xi, top + 1, a * 0.45); blend(xi, top - 1, a * 0.18);
+    }
   }
-  postMessage({ cmd: 'frame', id, W, H, heading, pitch, ppr, img: img.buffer, depth: depth.buffer }, [img.buffer, depth.buffer]);
+  postMessage({ cmd: 'strip', kind: m.kind, gen: m.gen, idx: m.idx, w, H, img: img.buffer, depth: depth.buffer }, [img.buffer, depth.buffer]);
 }
 
 // ---- Rivers from the terrain: priority-flood + flow accumulation on the z10 mosaic ----
@@ -618,7 +799,7 @@ function loadTile(z, x, y) {
 }
 
 async function buildLevels(vp, onProgress) {
-  const specs = [{ z: 11, maxD: 12000, cover: 14000 }, { z: 10, maxD: 62000, cover: 66000 }, { z: 9, maxD: vp.maxD, cover: vp.maxD + 8000 }];
+  const specs = [{ z: 12, maxD: 4500, cover: 6000 }, { z: 11, maxD: 12000, cover: 14000 }, { z: 10, maxD: 62000, cover: 66000 }, { z: 9, maxD: vp.maxD, cover: vp.maxD + 8000 }];
   const jobs = [];
   for (const s of specs) {
     const W = 256 * Math.pow(2, s.z);
@@ -655,273 +836,438 @@ async function buildLevels(vp, onProgress) {
 }
 
 // =====================================================================================
-//  Panorama state
+//  Panorama engine
+//  The full 360° is rendered once into vertical strips by a small pool of workers, so looking
+//  around only slides finished images (60 fps, no re-render while dragging). A new "generation"
+//  is rendered when zoom, visibility, theme, height or the pitch window change; the previous one
+//  stays on screen, scaled, until the new strips land, nearest to the view first.
 // =====================================================================================
 const pano = $('pano'), fx = $('fx'), stage = $('stage'), labelsEl = $('labels');
 const pctx = pano.getContext('2d'), fctx = fx.getContext('2d');
 const mini = $('mini'), mctx = mini.getContext('2d');
 const compassC = $('compass-c'), cctx = compassC.getContext('2d');
 
-let worker = null, workerReady = false;
-let CUR = null;           // current viewpoint runtime object
-let LEVELS = null;
+const SW = 256;                         // strip width in render pixels
+let workers = [];
+let CUR = null;                         // current viewpoint runtime object
 let view = { heading: 0, pitch: 0.03, hfov: 60 * Math.PI / 180 };
-let frame = null;         // last frame from worker
-let frameCanvas = document.createElement('canvas');
-let reqId = 0, lastSent = 0, interacting = false, idleTimer = null;
-let showAll = false;
-let rivers = { segs: null, visible: [], tags: [] };
+let fovTarget = view.hfov;
+let G = null, Gprev = null, genId = 0;  // current and fallback panorama generations
+let rivers = { segs: null, ang: null, n: 0, vis: null, buckets: null, anchors: [], tagEls: [] };
+let needDraw = false, settleT = null, miniOn = false, scopeOn = false, tuneOn = false;
 
+let PREFS = { theme: 'dark', vis: 150, labels: 'quiz', contours: true };
+try { Object.assign(PREFS, JSON.parse(localStorage.getItem('himalaya-skyline-prefs') || '{}')); } catch (e) {}
+function savePrefs() { try { localStorage.setItem('himalaya-skyline-prefs', JSON.stringify(PREFS)); } catch (e) {} }
+SAVE.marks = SAVE.marks || {};
+
+// Fly-up: raise the eye above the viewpoint, PeakFinder's "elevation offset"
+const FLY = [0, 300, 800, 1600, 3000, 5000];
+let flyIdx = 0, eyeOff = 0, flying = null;
+const curEye = () => CUR.eye + eyeOff;
+
+const THEMES = {
+  dark: { skyTop: '#17181b', skyHor: '#323439', near: '#1c1d20', far: '#3f4248', lit: '#5c6068', shadow: '#111214', snow: '#8b9098',
+          line: '#ffffff', snowAmt: .22, shade: .55, haze: .78, bg: '#232427', river: [110, 195, 255], glint: [235, 250, 255], ink: '235,238,242', accent: '#f5a623' },
+  light: { skyTop: '#ffffff', skyHor: '#f0f1f3', near: '#fbfbfa', far: '#eceef0', lit: '#ffffff', shadow: '#c6c9cf', snow: '#ffffff',
+          line: '#15171a', snowAmt: .5, shade: .6, haze: .82, bg: '#ffffff', river: [22, 119, 201], glint: [255, 255, 255], ink: '21,23,26', accent: '#d9820b' },
+};
+const hexRGB = (c) => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
+function themeRGB(name) { const t = THEMES[name], o = {}; for (const k in t) o[k] = typeof t[k] === 'string' && t[k][0] === '#' ? hexRGB(t[k]) : t[k]; return o; }
+const TH = () => THEMES[PREFS.theme];
+const easeIO = (k) => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+
+// ---------- worker pool ----------
 function makeWorker() {
   const src = SHARED + '\n' + document.getElementById('worker-src').textContent;
   const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
   const w = new Worker(url);
-  w.onmessage = onWorker;
+  w.onmessage = (e) => onWorker(w, e.data);
   return w;
 }
-
-let losResolve = null, riverResolve = null, readyResolve = null;
-function onWorker(e) {
-  const m = e.data;
-  if (m.cmd === 'ready') { workerReady = true; readyResolve && readyResolve(); }
-  else if (m.cmd === 'frame') {
-    if (m.id < lastShown) return;
-    lastShown = m.id;
-    frame = m;
-    frame.depthArr = new Float32Array(m.depth);
-    frameCanvas.width = m.W; frameCanvas.height = m.H;
-    frameCanvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(m.img), m.W, m.H), 0, 0);
-    afterFrame();
-  } else if (m.cmd === 'los') { losResolve && losResolve(m.vis); }
-  else if (m.cmd === 'rivers') { riverResolve && riverResolve(m); }
+function onWorker(w, m) {
+  if (m.cmd === 'ready') w._ready && w._ready();
+  else if (m.cmd === 'strip') (m.kind === 'frame' ? onFlyFrame(m) : onStrip(m));
+  else if (m.cmd === 'los') w._los && w._los(m.vis);
+  else if (m.cmd === 'rivers') w._riv && w._riv(m);
 }
-let lastShown = 0;
+async function startWorkers(levels, vpMsg) {
+  stopWorkers();
+  const n = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
+  workers = Array.from({ length: n }, makeWorker);
+  await Promise.all(workers.map(w => new Promise((res) => { w._ready = res; w.postMessage({ cmd: 'init', levels, vp: vpMsg }); })));
+}
+function stopWorkers() { for (const w of workers) w.terminate(); workers = []; dropGen(G); dropGen(Gprev); G = Gprev = null; }
 
+// ---------- generations ----------
 function cssSize() { return { W: stage.clientWidth, H: stage.clientHeight }; }
-function ppr() { return cssSize().W / view.hfov; }
-
-function requestRender(quality) {
-  if (!workerReady) return;
-  const { W, H } = cssSize();
-  const q = quality || 1;
-  const scale = q > 0.75 ? Math.min(1.5, window.devicePixelRatio || 1) : 0.5;
-  const rw = Math.max(64, Math.round(W * scale)), rh = Math.max(64, Math.round(H * scale));
-  worker.postMessage({ cmd: 'render', id: ++reqId, W: rw, H: rh, heading: view.heading, pitch: view.pitch, ppr: rw / view.hfov, quality: q });
+function dropGen(g) { if (g) for (const s of g.strips) if (s && s.bmp.close) s.bmp.close(); }
+function renderScale(W, H, cssPpr) {
+  let s = Math.min(1.5, window.devicePixelRatio || 1);
+  while (s > 0.6 && (TAU * cssPpr * s) * (H * 1.7 * s) > 14e6) s -= 0.1;
+  return s;
 }
-
-function resizeCanvases() {
-  const { W, H } = cssSize(), dpr = Math.min(2, window.devicePixelRatio || 1);
-  for (const c of [pano, fx]) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
-  const cw = compassC.clientWidth; compassC.width = Math.round(cw * dpr); compassC.height = Math.round(40 * dpr);
-  const mw = mini.clientWidth; mini.width = Math.round(mw * dpr); mini.height = Math.round(mw * dpr);
+function newGen() {
+  if (!CUR || !workers.length) return null;
+  const { W, H } = cssSize(), cssPpr = W / view.hfov, s = renderScale(W, H, cssPpr);
+  const n = Math.ceil(TAU * cssPpr * s / SW), ppr = n * SW / TAU, Hs = Math.ceil(H * 1.7 * s);
+  const old = G;
+  if (old) { if (old.done >= Math.min(3, old.n)) { dropGen(Gprev); Gprev = old; } else dropGen(old); }
+  const g = { id: ++genId, s, ppr, n, Hs, altTop: view.pitch + (H * 0.85) / cssPpr, eye: CUR.eye + FLY[flyIdx],
+    maxD: PREFS.vis * 1000, theme: PREFS.theme, strips: new Array(n).fill(null), done: 0, t0: performance.now() };
+  G = g;
+  for (const w of workers) w.postMessage({ cmd: 'cancel', gen: g.id });
+  const mid = (i) => Math.abs(angDiff((i + .5) * SW / ppr, view.heading));
+  const order = [...Array(n).keys()].sort((a, b) => mid(a) - mid(b));
+  const T = themeRGB(g.theme);
+  order.forEach((idx, k) => workers[k % workers.length].postMessage({ cmd: 'strip', kind: 'strip', gen: g.id, idx, prio: k,
+    x0: idx * SW, w: SW, H: Hs, ppr, altTop: g.altTop, eye: g.eye, maxD: g.maxD, T, contours: PREFS.contours }));
+  prepRivers(g);
+  return g;
 }
+async function onStrip(m) {
+  const g = G; if (!g || m.gen !== g.id) return;
+  const bmp = await createImageBitmap(new ImageData(new Uint8ClampedArray(m.img), m.w, m.H));
+  if (g !== G) { bmp.close(); return; }
+  g.strips[m.idx] = { bmp, depth: new Uint16Array(m.depth) };
+  g.done++;
+  stripRivers(g, m.idx);
+  if (g.done === g.n && Gprev) { dropGen(Gprev); Gprev = null; }
+  if (g.done === 1 || visibleReady(g)) revealPano();
+  needDraw = true;
+}
+function visibleReady(g) {
+  const { W } = cssSize(), half = (W / 2) / (W / view.hfov);
+  for (let a = -half; a <= half + 1e-9; a += SW / g.ppr / 2) if (!g.strips[Math.floor(wrap(view.heading + a) * g.ppr / SW) % g.n]) return false;
+  return true;
+}
+// does the current generation still cover the view sharply?
+function onSettle() {
+  if (!CUR || !G || flying) return;
+  const { W, H } = cssSize(), cssPpr = W / view.hfov;
+  const z = cssPpr * G.s / G.ppr;
+  const top = view.pitch + (H / 2) / cssPpr, bot = view.pitch - (H / 2) / cssPpr, gBot = G.altTop - G.Hs / G.ppr;
+  if (z > 1.3 || z < 0.62 || top > G.altTop || bot < gBot) newGen();
+}
+function viewMoved() { needDraw = true; clearTimeout(settleT); settleT = setTimeout(onSettle, 240); }
 
-// Draw the last frame, shifted/scaled to the current view (instant feedback while the worker catches up)
+// ---------- drawing ----------
+function drawGen(g, W, H, cssPpr, dpr) {
+  const sc = cssPpr / g.ppr, y = H / 2 - (g.altTop - view.pitch) * cssPpr, wS = SW * sc, hS = g.Hs * sc, full = TAU * cssPpr;
+  for (let i = 0; i < g.n; i++) {
+    const st = g.strips[i]; if (!st) continue;
+    const x = W / 2 + angDiff(i * SW / g.ppr, view.heading) * cssPpr;
+    for (const xx of [x, x - full, x + full]) {
+      if (xx >= W || xx + wS <= 0) continue;
+      const px = Math.floor(xx * dpr), pw = Math.ceil((xx + wS) * dpr) - px + 1;
+      pctx.drawImage(st.bmp, px, Math.round(y * dpr), pw, Math.round(hS * dpr));
+    }
+  }
+}
 function drawPano() {
-  if (!frame) return;
-  const { W, H } = cssSize(), dpr = pano.width / W;
+  const { W, H } = cssSize(), dpr = pano.width / W, cssPpr = W / view.hfov;
   pctx.setTransform(1, 0, 0, 1, 0, 0);
-  pctx.fillStyle = '#0b111b'; pctx.fillRect(0, 0, pano.width, pano.height);
-  const pNow = W / view.hfov;                 // css px per rad now
-  const sc = pNow / (frame.ppr / (frame.W / W)); // scale of the frame relative to now
-  const fW = W * sc, fH = (frame.H / frame.W) * W * sc;
-  const dx = -angDiff(view.heading, frame.heading) * pNow, dy = (view.pitch - frame.pitch) * pNow;
-  const x = (W - fW) / 2 + dx, y = (H - fH) / 2 + dy;
-  pctx.imageSmoothingEnabled = true;
-  pctx.drawImage(frameCanvas, x * dpr, y * dpr, fW * dpr, fH * dpr);
+  pctx.fillStyle = TH().bg; pctx.fillRect(0, 0, pano.width, pano.height);
+  pctx.imageSmoothingEnabled = true; pctx.imageSmoothingQuality = 'high';
+  if (flying && flying.playing) { drawFly(W, H, dpr); return; }
+  if (Gprev) drawGen(Gprev, W, H, cssPpr, dpr);
+  if (G) drawGen(G, W, H, cssPpr, dpr);
 }
+function revealPano() { const v = $('veil'); if (v.style.opacity !== '0') v.style.opacity = '0'; }
 
 // =====================================================================================
 //  Projection of points into the current view
 // =====================================================================================
 function project(az, d, h) {
   const { W, H } = cssSize(), p = W / view.hfov;
-  const alt = Math.atan2(h - d * d * CURV - CUR.eye, d);
+  const alt = Math.atan2(h - d * d * CURV - curEye(), d);
   return { x: W / 2 + angDiff(az, view.heading) * p, y: H / 2 - (alt - view.pitch) * p, alt };
 }
-// depth from the last frame at a css-pixel position (frame may be offset)
-function depthAt(cssX, cssY) {
-  if (!frame) return NaN;
-  const { W } = cssSize();
-  const fp = frame.ppr;                         // frame px per rad
-  const az = view.heading + (cssX - W / 2) / (W / view.hfov);
-  const alt = view.pitch + (cssSize().H / 2 - cssY) / (W / view.hfov);
-  const fx_ = frame.W / 2 + angDiff(az, frame.heading) * fp;
-  const fy_ = frame.H / 2 - (alt - frame.pitch) * fp;
-  const ix = Math.round(fx_), iy = Math.round(fy_);
-  if (ix < 0 || iy < 0 || ix >= frame.W || iy >= frame.H) return NaN;
-  return frame.depthArr[iy * frame.W + ix];
+function depthAtAng(g, az, alt) {
+  if (!g) return NaN;
+  const px = wrap(az) * g.ppr, idx = Math.floor(px / SW) % g.n, st = g.strips[idx];
+  if (!st) return NaN;
+  const col = Math.min(SW - 1, Math.floor(px - idx * SW)), row = Math.floor((g.altTop - alt) * g.ppr);
+  if (row < 0 || row >= g.Hs) return NaN;
+  const v = st.depth[row * SW + col]; return v === 65535 ? Infinity : v * 10;
 }
 
 // =====================================================================================
-//  Labels, quiz markers, rivers
+//  Rivers: traced segments, tested against each strip's depth as it arrives
 // =====================================================================================
-let markerEls = new Map();
+function prepRivers(g) {
+  if (!rivers.segs) return;
+  const s = rivers.segs, n = s.length / 7, eye = g.eye;
+  rivers.n = n; rivers.ang = new Float32Array(n * 5); rivers.vis = new Uint8Array(n);
+  rivers.buckets = Array.from({ length: g.n }, () => []);
+  rivers.anchors = CUR.def.rivers.map(() => null); rivers.anchorScore = CUR.def.rivers.map(() => Infinity);
+  for (let i = 0; i < n; i++) {
+    const o = i * 7;
+    const [az1, d1] = azDist(CUR.lat, CUR.lon, s[o + 1], s[o]), [az2, d2] = azDist(CUR.lat, CUR.lon, s[o + 4], s[o + 3]);
+    if (d1 < 200 || d1 > g.maxD) continue;
+    const a1 = Math.atan2(s[o + 2] + 4 - d1 * d1 * CURV - eye, d1), a2 = Math.atan2(s[o + 5] + 4 - d2 * d2 * CURV - eye, d2);
+    rivers.ang.set([az1, a1, az1 + angDiff(az2, az1), a2, d1], i * 5);
+    rivers.buckets[Math.floor(wrap(az1) * g.ppr / SW) % g.n].push(i);
+  }
+}
+function stripRivers(g, idx) {
+  if (!rivers.buckets || !rivers.buckets[idx]) return;
+  const A = rivers.ang, s = rivers.segs;
+  for (const i of rivers.buckets[idx]) {
+    const o = i * 5, az = (A[o] + A[o + 2]) / 2, alt = (A[o + 1] + A[o + 3]) / 2, d1 = A[o + 4];
+    const dep = depthAtAng(g, az, alt - 0.6 / g.ppr);
+    if (!(dep === dep) || dep < d1 * 0.93 - 150) continue;
+    rivers.vis[i] = 1;
+    const so = i * 7, acc = s[so + 6];
+    CUR.def.rivers.forEach((r, k) => {
+      const dd = Math.hypot((s[so + 1] - r[1]) * K_DEG, (s[so] - r[2]) * K_DEG * Math.cos(r[1] * Math.PI / 180));
+      const score = dd - Math.log(acc) * 200;
+      if (dd < 4500 && score < rivers.anchorScore[k]) { rivers.anchorScore[k] = score; rivers.anchors[k] = { az: A[o], d: d1, h: s[so + 2] + 4 }; }
+    });
+  }
+}
+// drawn every animation frame with a slow travelling glint
+function drawRivers(t) {
+  const { W, H } = cssSize(), dpr = fx.width / W;
+  fctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  fctx.clearRect(0, 0, W, H);
+  if (!rivers.vis || !CUR || (flying && flying.playing)) return;
+  const p = W / view.hfov, A = rivers.ang, s = rivers.segs, T = CUR.riverT, th = TH();
+  const dEye = (G ? G.eye : CUR.eye) - curEye();          // during fly-down the old eye height differs slightly
+  fctx.lineCap = 'round';
+  const [r, g, b] = th.river, [gr, gg, gb] = th.glint;
+  for (let i = 0; i < rivers.n; i++) {
+    if (!rivers.vis[i]) continue;
+    const o = i * 5, x1 = W / 2 + angDiff(A[o], view.heading) * p;
+    if (x1 < -30 || x1 > W + 30) continue;
+    const d = A[o + 4], lift = dEye / d;
+    const y1 = H / 2 - (A[o + 1] + lift - view.pitch) * p;
+    if (y1 < -30 || y1 > H + 30) continue;
+    const x2 = x1 + (A[o + 2] - A[o]) * p, y2 = H / 2 - (A[o + 3] + lift - view.pitch) * p;
+    const big = Math.log10(s[i * 7 + 6] / T + 1);
+    const near = Math.max(0.35, Math.min(1.6, 9000 / d)) * Math.min(2.2, Math.max(0.7, p / 1100));
+    const w = Math.max(0.6, (0.7 + big * 1.3) * near);
+    const ph = (s[i * 7] * 260 + s[i * 7 + 1] * 290) % TAU;
+    const shimmer = reduced ? 0.5 : 0.5 + 0.5 * Math.sin(t * 0.0016 - ph);
+    const a = Math.min(0.95, 0.35 + big * 0.25) * (0.55 + 0.45 * shimmer);
+    fctx.strokeStyle = `rgba(${r},${g},${b},${a})`; fctx.lineWidth = w;
+    fctx.beginPath(); fctx.moveTo(x1, y1); fctx.lineTo(x2, y2); fctx.stroke();
+    if (shimmer > 0.93 && !reduced) {
+      fctx.strokeStyle = `rgba(${gr},${gg},${gb},${(shimmer - 0.93) * 12})`; fctx.lineWidth = w + 1.2;
+      fctx.beginPath(); fctx.moveTo(x1, y1); fctx.lineTo(x2, y2); fctx.stroke();
+    }
+  }
+}
+
+// =====================================================================================
+//  Labels (PeakFinder style: slanted names on a common band, thin leader lines) and quiz markers
+// =====================================================================================
+let markerEls = new Map(), selPeak = null;
+const marksOf = (name) => SAVE.marks[name] || {};
 function buildLabelEls() {
   labelsEl.innerHTML = ''; markerEls.clear();
   for (const p of CUR.peaks) {
     const el = document.createElement('div'); el.className = 'pk';
     el.innerHTML = '<div class="stem"></div><div class="txt"></div>';
+    const txt = el.querySelector('.txt');
+    txt.addEventListener('pointerdown', (e) => e.stopPropagation());
+    txt.addEventListener('click', (e) => { e.stopPropagation(); showPeakInfo(p); });
     const q = document.createElement('button'); q.className = 'q'; q.type = 'button'; q.textContent = '?';
     q.setAttribute('aria-label', 'Name this peak');
     q.addEventListener('pointerdown', (e) => e.stopPropagation());
     q.addEventListener('click', (e) => { e.stopPropagation(); openGuess(p); });
     const qs = document.createElement('div'); qs.className = 'q-stem';
     labelsEl.append(el, qs, q);
-    markerEls.set(p, { el, q, qs });
+    markerEls.set(p, { el, q, qs, txt, stem: el.querySelector('.stem'), key: '' });
   }
   rivers.tagEls = CUR.def.rivers.map(([name]) => {
     const t = document.createElement('div'); t.className = 'river-tag'; t.textContent = name; t.hidden = true; labelsEl.append(t); return t;
   });
 }
-
+function labelHTML(p) {
+  const m = marksOf(p.name);
+  const mk = (m.fav ? '♥' : '') + (m.flag ? '⚑' : '');
+  return (mk ? `<span class="mk">${mk}</span>` : '') + `${p.name}<small>${fmt(p.h)}<i>m</i></small>`;
+}
 function updateLabels() {
   if (!CUR) return;
-  const { W, H } = cssSize();
-  const solved = vpSolved(CUR.def.id);
+  const { W, H } = cssSize(), solved = vpSolved(CUR.def.id), mode = PREFS.labels, maxD = PREFS.vis * 1000;
+  const names = [], qs = [];
   for (const p of CUR.peaks) {
     const m = markerEls.get(p); if (!m) continue;
     const pr = project(p.az, p.d, p.hs);
-    const onScreen = pr.x > -40 && pr.x < W + 40 && pr.y > -40 && pr.y < H + 10;
-    const isSolved = !!solved[p.name];
-    const target = p.visible;
-    const showLabel = onScreen && target && (isSolved || showAll);
-    const showQ = onScreen && target && !isSolved && !showAll;
-    m.el.hidden = !showLabel; m.q.hidden = !showQ; m.qs.hidden = !showQ;
-    if (showLabel) {
-      const stemH = 26 + (p.rank % 3) * 14;
-      m.el.style.transform = `translate(${pr.x}px, ${pr.y - 3}px)`;
-      m.el.querySelector('.stem').style.height = stemH + 'px';
-      const t = m.el.querySelector('.txt'); t.style.bottom = stemH + 'px';
-      t.innerHTML = `${p.name}<small>${fmt(p.h)} m</small>`;
-      m.el.classList.toggle('solved', isSolved);
-    }
-    if (showQ) {
-      const lift = 34 + (p.rank % 3) * 16;
-      m.q.style.transform = `translate(${pr.x}px, ${pr.y - lift}px)`;
-      m.qs.style.left = pr.x + 'px'; m.qs.style.top = (pr.y - lift + 15) + 'px'; m.qs.style.height = (lift - 18) + 'px';
-      m.q.classList.toggle('active', guessTarget === p);
-    }
+    const on = p.visible && p.d < maxD && pr.x > -30 && pr.x < W + 30 && pr.y > 40 && pr.y < H - 20;
+    const isSolved = solved[p.name] !== undefined, mk = marksOf(p.name);
+    const wantName = on && (mode === 'all' || (mode === 'quiz' && isSolved) || (mode === 'marked' && isSolved && (mk.fav || mk.flag)));
+    const wantQ = on && !isSolved && mode !== 'all';
+    if (wantName) names.push({ p, pr, m, isSolved }); else m.el.hidden = true;
+    if (wantQ) qs.push({ p, pr, m }); else { m.q.hidden = true; m.qs.hidden = true; }
   }
-  // river name tags
+  // names: one band above the highest labelled summit, decluttered left to right
+  const band = Math.max(70, Math.min(...names.map(n => n.pr.y), H) - 34);
+  names.sort((a, b) => a.pr.x - b.pr.x);
+  const kept = [];
+  for (const n of names) {
+    const last = kept[kept.length - 1];
+    if (last && n.pr.x - last.pr.x < 17) { if (n.p.h > last.p.h) { last.m.el.hidden = true; kept[kept.length - 1] = n; } else n.m.el.hidden = true; }
+    else kept.push(n);
+  }
+  for (const n of kept) {
+    const base = Math.min(n.pr.y - 18, band);
+    n.m.el.hidden = false;
+    n.m.el.style.transform = `translate(${n.pr.x}px, ${base}px)`;
+    n.m.stem.style.height = Math.max(0, n.pr.y - base - 2) + 'px';
+    const key = n.p.name + (marksOf(n.p.name).fav ? 1 : 0) + (marksOf(n.p.name).flag ? 1 : 0);
+    if (n.m.key !== key) { n.m.txt.innerHTML = labelHTML(n.p); n.m.key = key; }
+    n.m.el.classList.toggle('solved', n.isSolved);
+    n.m.el.classList.toggle('sel', selPeak === n.p);
+  }
+  // quiz markers sit on the same band
+  qs.sort((a, b) => a.pr.x - b.pr.x);
+  let lastX = -1e9, k = 0;
+  for (const q of qs) {
+    const stagger = q.pr.x - lastX < 34 ? (++k % 2) * 38 : (k = 0);
+    lastX = q.pr.x;
+    const y = Math.min(q.pr.y - 40, band + 6) - stagger;
+    q.m.q.hidden = false; q.m.qs.hidden = false;
+    q.m.q.style.transform = `translate(${q.pr.x}px, ${y}px)`;
+    q.m.qs.style.left = q.pr.x + 'px'; q.m.qs.style.top = (y + 15) + 'px'; q.m.qs.style.height = Math.max(0, q.pr.y - y - 17) + 'px';
+    q.m.q.classList.toggle('active', guessTarget === q.p);
+  }
+  // river names
   CUR.def.rivers.forEach((r, i) => {
-    const t = rivers.tagEls && rivers.tagEls[i]; if (!t) return;
-    const best = rivers.anchorScreen && rivers.anchorScreen[i];
-    if (!best) { t.hidden = true; return; }
-    const pr = project(best.az, best.d, best.h);
+    const t = rivers.tagEls[i]; if (!t) return;
+    const a = rivers.anchors && rivers.anchors[i];
+    if (!a || (flying && flying.playing)) { t.hidden = true; return; }
+    const pr = project(a.az, a.d, a.h);
     t.hidden = !(pr.x > 0 && pr.x < W - 60 && pr.y > 60 && pr.y < H - 50);
     t.style.transform = `translate(${pr.x + 6}px, ${pr.y + 4}px)`;
   });
 }
 
-// After a new frame arrives: recompute which river segments are visible
-function afterFrame() {
-  drawPano();
-  computeVisibleRivers();
-  updateLabels();
-  drawMini();
+// =====================================================================================
+//  Info bar, telescope, marks
+// =====================================================================================
+const info = $('info');
+let infoTimer = null, infoPeak = null;
+const ICON = {
+  fav: '<svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>',
+  flag: '<svg viewBox="0 0 24 24"><path d="M6 21V4M6 4h11l-2.5 4L17 12H6"/></svg>',
+};
+function setInfo({ nm, sub = '', meta = '', txt = '', acts = [] }, sticky) {
+  $('info-nm').innerHTML = ''; $('info-nm').textContent = nm;
+  if (sub) { const s = document.createElement('small'); s.textContent = sub; $('info-nm').append(s); }
+  $('info-meta').textContent = meta; $('info-txt').textContent = txt;
+  const ac = $('info-acts'); ac.innerHTML = ''; acts.forEach(a => ac.append(a));
+  info.classList.remove('off'); $('vpbar').classList.add('off');
+  clearTimeout(infoTimer); if (!sticky) infoTimer = setTimeout(hideInfo, 9000);
 }
-
-function computeVisibleRivers() {
-  rivers.visible = [];
-  if (!rivers.segs || !frame) return;
-  const s = rivers.segs, { W, H } = cssSize();
-  const anchors = CUR.def.rivers.map(() => ({ best: null, dist: 4000 }));
-  for (let i = 0; i < s.length; i += 7) {
-    const [az1, d1] = azDist(CUR.lat, CUR.lon, s[i + 1], s[i]);
-    if (d1 < 200) continue;
-    const a = project(az1, d1, s[i + 2] + 4);
-    if (a.x < -20 || a.x > W + 20 || a.y < -20 || a.y > H + 20) continue;
-    const [az2, d2] = azDist(CUR.lat, CUR.lon, s[i + 4], s[i + 3]);
-    const b = project(az2, d2, s[i + 5] + 4);
-    if (Math.abs(a.x - b.x) > 60) continue;
-    const dep = depthAt((a.x + b.x) / 2, (a.y + b.y) / 2 + 0.5);
-    if (!(dep === dep)) continue;
-    if (dep < d1 * 0.93 - 150) continue;   // hidden behind nearer ground
-    const acc = s[i + 6];
-    rivers.visible.push({ ax: a.x, ay: a.y, bx: b.x, by: b.y, d: d1, acc, ph: (s[i] * 260 + s[i + 1] * 290) % TAU });
-    CUR.def.rivers.forEach((r, k) => {
-      const dd = Math.hypot((s[i + 1] - r[1]) * K_DEG, (s[i] - r[2]) * K_DEG * Math.cos(r[1] * Math.PI / 180));
-      const score = dd - Math.log(acc) * 200;
-      if (dd < 4500 && (!anchors[k].best || score < anchors[k].score)) anchors[k] = { best: { az: az1, d: d1, h: s[i + 2] + 4 }, score };
-    });
+function hideInfo() {
+  clearTimeout(infoTimer); infoPeak = null; selPeak = null;
+  if (scopeOn) { updateScope(true); return; }
+  info.classList.add('off'); $('vpbar').classList.remove('off'); needDraw = true;
+}
+function markBtn(p, kind) {
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'mark' + (marksOf(p.name)[kind] ? ' on' : '');
+  b.innerHTML = ICON[kind]; b.title = kind === 'fav' ? 'Favourite' : 'Flag: climbed or want to climb';
+  b.setAttribute('aria-label', b.title); b.setAttribute('aria-pressed', !!marksOf(p.name)[kind]);
+  b.onclick = (e) => {
+    e.stopPropagation();
+    const m = SAVE.marks[p.name] || (SAVE.marks[p.name] = {});
+    m[kind] = !m[kind]; if (!m.fav && !m.flag) delete SAVE.marks[p.name];
+    persist();
+    b.classList.toggle('on', !!m[kind]); b.setAttribute('aria-pressed', !!m[kind]);
+    if (!reduced) { b.classList.add('pop'); setTimeout(() => b.classList.remove('pop'), 220); }
+    needDraw = true; if (miniOn) drawMini();
+  };
+  return b;
+}
+const peakMeta = (p) => `${fmt(p.d / 1000)} km · ${(wrap(p.az) * 180 / Math.PI).toFixed(1)}° ${dirWord(p.az)}`;
+function showPeakInfo(p, praise, pts) {
+  infoPeak = p; selPeak = p;
+  setInfo({ nm: (praise || '') + p.name, sub: `${fmt(p.h)} m`, meta: peakMeta(p) + (pts !== undefined ? ` · +${pts}` : ''), txt: p.fact,
+    acts: [markBtn(p, 'fav'), markBtn(p, 'flag')] }, scopeOn);
+  needDraw = true;
+}
+// telescope: what is under the crosshair right now
+let scopeKey = '';
+function updateScope(force) {
+  if (!scopeOn || !CUR) return;
+  const { W, H } = cssSize();
+  $('scope-rd').textContent = `↔ ${(wrap(view.heading) * 180 / Math.PI).toFixed(1)}°   ↕ ${(view.pitch * 180 / Math.PI).toFixed(1)}°`;
+  // nearest list peak inside the ring
+  let best = null, bd = 60;
+  for (const p of CUR.peaks) {
+    if (!p.visible) continue;
+    const pr = project(p.az, p.d, p.hs), dd = Math.hypot(pr.x - W / 2, pr.y - H / 2);
+    if (dd < bd) { bd = dd; best = p; }
   }
-  rivers.anchorScreen = anchors.map(a => a.best);
-}
-
-// rivers drawn every animation frame with a travelling glint
-function drawRivers(t) {
-  const { W, H } = cssSize(), dpr = fx.width / W;
-  fctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  fctx.clearRect(0, 0, W, H);
-  if (!rivers.visible.length || !frame) return;
-  // offset if the view moved since the frame
-  const pNow = W / view.hfov;
-  const sc = pNow / (frame.ppr / (frame.W / W));
-  const fdx = -angDiff(view.heading, frame.heading) * pNow, fdy = (view.pitch - frame.pitch) * pNow;
-  fctx.save();
-  fctx.translate(W / 2 + fdx, H / 2 + fdy); fctx.scale(sc, sc); fctx.translate(-W / 2, -H / 2);
-  fctx.lineCap = 'round';
-  const T = CUR.riverT;
-  for (const v of rivers.visible) {
-    const big = Math.log10(v.acc / T + 1);
-    const near = Math.max(0.35, Math.min(1.6, 9000 / v.d));
-    const w = Math.max(0.6, (0.7 + big * 1.3) * near);
-    const shimmer = reduced ? 0.5 : 0.5 + 0.5 * Math.sin(t * 0.0016 - v.ph);
-    const a = Math.min(0.95, 0.35 + big * 0.25) * (0.55 + 0.45 * shimmer);
-    fctx.strokeStyle = `rgba(110,195,255,${a})`;
-    fctx.lineWidth = w;
-    fctx.beginPath(); fctx.moveTo(v.ax, v.ay); fctx.lineTo(v.bx, v.by); fctx.stroke();
-    if (shimmer > 0.93 && !reduced) {
-      fctx.strokeStyle = `rgba(235,250,255,${(shimmer - 0.93) * 12})`;
-      fctx.lineWidth = w + 1.2;
-      fctx.beginPath(); fctx.moveTo(v.ax, v.ay); fctx.lineTo(v.bx, v.by); fctx.stroke();
-    }
+  if (best) {
+    const solved = vpSolved(CUR.def.id)[best.name] !== undefined;
+    const key = 'p' + best.name + solved;
+    if (key === scopeKey && !force) return; scopeKey = key;
+    if (solved) { showPeakInfo(best); return; }
+    const go = document.createElement('button'); go.type = 'button'; go.className = 'mark txtbtn'; go.textContent = 'Name it';
+    go.onclick = (e) => { e.stopPropagation(); openGuess(best); };
+    selPeak = null;
+    setInfo({ nm: 'Unnamed peak', sub: '?', meta: peakMeta(best), txt: 'One of the peaks on this skyline. Do you know it?', acts: [go] }, true);
+    return;
   }
-  fctx.restore();
+  const d = depthAtAng(G, view.heading, view.pitch);
+  if (!(d === d) || d === Infinity) {
+    const key = 'sky'; if (key === scopeKey && !force) return; scopeKey = key;
+    setInfo({ nm: 'Open sky', meta: `${(wrap(view.heading) * 180 / Math.PI).toFixed(1)}° ${dirWord(view.heading)}` }, true); return;
+  }
+  const h = curEye() + d * Math.tan(view.pitch) + d * d * CURV;
+  const key = 't' + Math.round(d / 50) + '_' + Math.round(h / 10); if (key === scopeKey && !force) return; scopeKey = key;
+  setInfo({ nm: 'Terrain', sub: `${fmt(h)} m`, meta: `${d < 10000 ? (d / 1000).toFixed(1) : fmt(d / 1000)} km · ${(wrap(view.heading) * 180 / Math.PI).toFixed(1)}° ${dirWord(view.heading)}` }, true);
 }
+$('scope-btn').onclick = () => {
+  scopeOn = !scopeOn; scopeKey = '';
+  $('scope-btn').classList.toggle('on', scopeOn); $('scope').classList.toggle('off', !scopeOn);
+  if (scopeOn) updateScope(true); else { info.classList.add('off'); $('vpbar').classList.remove('off'); selPeak = null; needDraw = true; }
+};
 
 // =====================================================================================
-//  Mini map + compass
+//  Mini map (toggled from the compass rose), rose, degree ruler
 // =====================================================================================
 function drawMini() {
-  if (!CUR) return;
-  const s = mini.width, ctx = mctx, R = s / 2, range = 45000, k = (R - 6) / range;
+  if (!CUR || !miniOn) return;
+  const s = mini.width, ctx = mctx, R = s / 2, range = 45000, k = (R - 6) / range, u = s / 168;
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, s, s);
-  ctx.save(); ctx.beginPath(); ctx.arc(R, R, R - 2, 0, TAU); ctx.clip();
-  ctx.fillStyle = 'rgba(8,12,20,.6)'; ctx.fillRect(0, 0, s, s);
+  ctx.save(); ctx.beginPath(); ctx.arc(R, R, R - 1, 0, TAU); ctx.clip();
   const toXY = (lat, lon) => { const [az, d] = azDist(CUR.lat, CUR.lon, lat, lon); return [R + Math.sin(az) * d * k, R - Math.cos(az) * d * k]; };
-  // view cone
-  ctx.fillStyle = 'rgba(245,166,35,.16)';
+  ctx.fillStyle = 'rgba(245,166,35,.18)';
   ctx.beginPath(); ctx.moveTo(R, R);
   ctx.arc(R, R, R, view.heading - Math.PI / 2 - view.hfov / 2, view.heading - Math.PI / 2 + view.hfov / 2); ctx.closePath(); ctx.fill();
-  // rivers
   if (rivers.segs) {
-    const sg = rivers.segs; ctx.strokeStyle = 'rgba(110,195,255,.85)'; ctx.lineCap = 'round';
+    const sg = rivers.segs; ctx.strokeStyle = 'rgba(110,195,255,.62)'; ctx.lineCap = 'round';
     for (let i = 0; i < sg.length; i += 7) {
-      const w = Math.max(0.6, Math.log10(sg[i + 6] / CUR.riverT + 1) * 1.6) * (s / 150);
-      ctx.lineWidth = w;
+      ctx.lineWidth = Math.max(0.45, Math.log10(sg[i + 6] / CUR.riverT + 1) * 1.15) * u;
       const [x1, y1] = toXY(sg[i + 1], sg[i]), [x2, y2] = toXY(sg[i + 4], sg[i + 3]);
       ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
     }
   }
-  // peaks
   const solved = vpSolved(CUR.def.id);
   for (const p of CUR.peaks) {
     if (!p.visible || p.d > range * 1.02) continue;
-    const [x, y] = toXY(p.lat, p.lon);
-    ctx.fillStyle = solved[p.name] ? '#ffd38a' : '#ffffff';
-    ctx.beginPath(); ctx.moveTo(x, y - 4 * s / 150); ctx.lineTo(x - 3.5 * s / 150, y + 3 * s / 150); ctx.lineTo(x + 3.5 * s / 150, y + 3 * s / 150); ctx.fill();
+    const [x, y] = toXY(p.lat, p.lon), mk = marksOf(p.name);
+    ctx.fillStyle = (mk.fav || mk.flag) ? '#f5a623' : solved[p.name] !== undefined ? '#ffd38a' : '#ffffff';
+    ctx.beginPath(); ctx.moveTo(x, y - 4 * u); ctx.lineTo(x - 3.5 * u, y + 3 * u); ctx.lineTo(x + 3.5 * u, y + 3 * u); ctx.fill();
   }
   ctx.restore();
-  ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(R, R, R - 2, 0, TAU); ctx.stroke();
-  ctx.fillStyle = '#f5a623'; ctx.beginPath(); ctx.arc(R, R, 3.5 * s / 150, 0, TAU); ctx.fill();
-  ctx.fillStyle = '#9aa8bb'; ctx.font = `${11 * s / 150}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.fillText('N', R, 14 * s / 150);
-  ctx.textAlign = 'right'; ctx.fillText('45 km', s - 10, s - 8);
+  ctx.fillStyle = '#f5a623'; ctx.beginPath(); ctx.arc(R, R, 3.5 * u, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#c9ced6'; ctx.font = `600 ${11 * u}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.fillText('N', R, 15 * u);
+  ctx.font = `${10 * u}px system-ui, sans-serif`; ctx.fillText('45 km', R, s - 10 * u);
 }
-
+$('rose').onclick = () => { miniOn = !miniOn; mini.classList.toggle('off', !miniOn); $('rose').setAttribute('aria-label', miniOn ? 'Hide the mini map' : 'Show the mini map'); if (miniOn) drawMini(); };
+function drawRose() {
+  const deg = wrap(view.heading) * 180 / Math.PI;
+  $('rose-needle').setAttribute('transform', `rotate(${-deg})`);
+  $('rose-deg').textContent = Math.round(deg) % 360 + '°';
+}
 function drawCompass() {
-  const w = compassC.width, h = compassC.height, dpr = h / 40, ctx = cctx;
+  const w = compassC.width, h = compassC.height, dpr = h / 30, ctx = cctx, th = TH();
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, w, h);
   const W = w / dpr, p = cssSize().W / view.hfov;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -929,32 +1275,92 @@ function drawCompass() {
   const minor = degPx > 18 ? 1 : degPx > 6 ? 5 : 10, major = minor === 1 ? 5 : minor === 5 ? 15 : 30;
   const left = view.heading - (W / 2) / p, right = view.heading + (W / 2) / p;
   const startDeg = Math.floor(left * 180 / Math.PI / minor) * minor;
-  ctx.font = '11px ui-monospace, Menlo, monospace'; ctx.textAlign = 'center';
+  ctx.font = '10.5px ui-monospace, Menlo, monospace'; ctx.textAlign = 'center';
   for (let dg = startDeg; dg <= right * 180 / Math.PI + minor; dg += minor) {
     const x = W / 2 + (dg * Math.PI / 180 - view.heading) * p;
-    const norm = ((dg % 360) + 360) % 360;
-    const isMajor = norm % major === 0;
-    ctx.strokeStyle = isMajor ? 'rgba(242,246,251,.8)' : 'rgba(242,246,251,.35)';
-    ctx.beginPath(); ctx.moveTo(x, 40); ctx.lineTo(x, isMajor ? 30 : 34); ctx.stroke();
+    const norm = ((dg % 360) + 360) % 360, isMajor = norm % major === 0;
+    ctx.strokeStyle = `rgba(${th.ink},${isMajor ? .75 : .32})`;
+    ctx.beginPath(); ctx.moveTo(x, 30); ctx.lineTo(x, isMajor ? 22 : 26); ctx.stroke();
     if (isMajor) {
       const card = norm % 45 === 0 ? ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][norm / 45] : null;
-      ctx.fillStyle = card ? '#f5a623' : 'rgba(242,246,251,.75)';
-      ctx.fillText(card || (norm + '°'), x, 24);
+      ctx.fillStyle = card ? th.accent : `rgba(${th.ink},.75)`;
+      ctx.fillText(card || (norm + '°'), x, 17);
     }
   }
-  ctx.fillStyle = '#f5a623'; ctx.beginPath(); ctx.moveTo(W / 2 - 5, 40); ctx.lineTo(W / 2 + 5, 40); ctx.lineTo(W / 2, 34); ctx.fill();
+  ctx.fillStyle = th.accent; ctx.beginPath(); ctx.moveTo(W / 2 - 5, 30); ctx.lineTo(W / 2 + 5, 30); ctx.lineTo(W / 2, 24); ctx.fill();
 }
 
 // =====================================================================================
-//  Interaction: drag to look around, wheel/pinch to zoom
+//  Fly-up: low-resolution frames at rising heights play as a cross-fading film while
+//  the full-quality panorama for the new height renders behind them
+// =====================================================================================
+function updateFlyUI() {
+  $('fly-up').disabled = flyIdx >= FLY.length - 1 || !!flying;
+  $('fly-down').disabled = flyIdx <= 0 || !!flying;
+  const a = $('fly-alt'); a.textContent = FLY[flyIdx] ? '+' + fmt(FLY[flyIdx]) : '';
+  a.classList.toggle('up', flyIdx > 0);
+  $('pl-elev').textContent = `${fmt(curEye())} m`;
+}
+function flyStep(dir) {
+  if (flying || !CUR || !workers.length) return;
+  const idx = Math.max(0, Math.min(FLY.length - 1, flyIdx + dir)); if (idx === flyIdx) return;
+  const from = eyeOff, to = FLY[idx];
+  // freeze the current picture as frame 0
+  const snap = document.createElement('canvas'); snap.width = pano.width; snap.height = pano.height; snap.getContext('2d').drawImage(pano, 0, 0);
+  flyIdx = idx;
+  const g = newGen();
+  const { W, H } = cssSize(), cssPpr = W / view.hfov, s = 0.5, ppr = cssPpr * s;
+  const nF = reduced ? 1 : 7, T = themeRGB(PREFS.theme);
+  const x0 = Math.floor(wrap(view.heading - (W / 2) / cssPpr) * ppr);
+  flying = { gen: g.id, from, to, nF, frames: new Array(nF).fill(null), got: 0, snap, s, ppr, x0, altTop: view.pitch + (H / 2) / cssPpr,
+    heading: view.heading, pitch: view.pitch, hfov: view.hfov, playing: false, t0: 0, dur: reduced ? 0 : 2300 + Math.abs(to - from) * 0.12 };
+  for (let i = 0; i < nF; i++) {
+    const e = easeIO((i + 1) / nF), eye = CUR.eye + from + (to - from) * e;
+    workers[i % workers.length].postMessage({ cmd: 'strip', kind: 'frame', gen: g.id, idx: i, prio: -1000 + i, x0: flying.x0, w: Math.ceil(W * s) + 2,
+      H: Math.ceil(H * s), ppr, altTop: flying.altTop, eye, maxD: PREFS.vis * 1000, T, contours: false, k: 0.008, minStep: 20 });
+  }
+  closeGuess(); updateFlyUI();
+}
+async function onFlyFrame(m) {
+  const f = flying; if (!f || m.gen !== f.gen) return;
+  f.frames[m.idx] = await createImageBitmap(new ImageData(new Uint8ClampedArray(m.img), m.w, m.H));
+  if (++f.got === f.nF) { f.playing = true; f.t0 = performance.now(); needDraw = true; }
+}
+function stepFly(t) {
+  const f = flying; if (!f || !f.playing) return;
+  const u = f.dur ? Math.max(0, Math.min(1, (t - f.t0) / f.dur)) : 1;
+  eyeOff = f.from + (f.to - f.from) * easeIO(u);
+  f.u = u; needDraw = true;
+  if (u >= 1 && (visibleReady(G) || t - f.t0 > f.dur + 2500)) {
+    for (const b of f.frames) b && b.close && b.close();
+    eyeOff = f.to; flying = null; updateFlyUI(); needDraw = true;
+  }
+  $('pl-elev').textContent = `${fmt(curEye())} m`;
+}
+function drawFly(W, H, dpr) {
+  const f = flying, u = f.u || 0, pos = u * f.nF;          // 0 = snapshot, 1..nF = frames
+  const i = Math.min(f.nF, Math.floor(pos)), a = pos - i;
+  const img = (k) => k === 0 ? f.snap : f.frames[k - 1];
+  const draw = (k, alpha) => {
+    if (alpha <= 0) return;
+    pctx.globalAlpha = alpha;
+    if (k === 0) pctx.drawImage(f.snap, 0, 0, pano.width, pano.height);
+    else { const b = img(k); if (!b) return; pctx.drawImage(b, 0, 0, b.width / f.s * dpr, b.height / f.s * dpr); }
+  };
+  draw(i, 1); if (i < f.nF) draw(i + 1, a);
+  pctx.globalAlpha = 1;
+}
+
+// =====================================================================================
+//  Interaction: drag to look around (with momentum), wheel / pinch / buttons to zoom smoothly
 // =====================================================================================
 const pointers = new Map();
-let dragStart = null, pinchStart = null, vel = 0, lastMoveT = 0;
+let dragStart = null, pinchStart = null, vel = 0, lastMoveT = 0, coasting = false;
 stage.addEventListener('pointerdown', (e) => {
-  if (!CUR) return;
+  if (!CUR || flying) return;
   stage.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (pointers.size === 1) { dragStart = { x: e.clientX, y: e.clientY, h: view.heading, p: view.pitch, moved: false }; vel = 0; }
+  if (pointers.size === 1) { dragStart = { x: e.clientX, y: e.clientY, h: view.heading, p: view.pitch, moved: false }; vel = 0; coasting = false; lastMoveT = performance.now(); }
   if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinchStart = { dist: Math.hypot(a.x - b.x, a.y - b.y), hfov: view.hfov }; }
   stage.classList.add('dragging');
 });
@@ -964,80 +1370,89 @@ stage.addEventListener('pointermove', (e) => {
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (pointers.size === 2 && pinchStart) {
     const [a, b] = [...pointers.values()];
-    setFov(pinchStart.hfov * pinchStart.dist / Math.max(20, Math.hypot(a.x - b.x, a.y - b.y)));
+    setFov(pinchStart.hfov * pinchStart.dist / Math.max(20, Math.hypot(a.x - b.x, a.y - b.y)), true);
     return;
   }
   if (!dragStart) return;
   const p = cssSize().W / view.hfov;
   const dxp = e.clientX - dragStart.x, dyp = e.clientY - dragStart.y;
   if (Math.abs(dxp) + Math.abs(dyp) > 4) dragStart.moved = true;
-  const now = performance.now();
-  vel = -(e.clientX - prev.x) / p / Math.max(8, now - lastMoveT); lastMoveT = now;
+  const now = performance.now(), dt = Math.max(6, now - lastMoveT); lastMoveT = now;
+  const v = -(e.clientX - prev.x) / p / dt; vel = vel * 0.5 + v * 0.5;   // smoothed release velocity
   view.heading = wrap(dragStart.h - dxp / p);
   view.pitch = clampPitch(dragStart.p + dyp / p);
-  onViewChanged(true);
+  viewMoved();
 });
 function endPointer(e) {
   pointers.delete(e.pointerId);
   if (pointers.size < 2) pinchStart = null;
   if (pointers.size === 0) {
     stage.classList.remove('dragging');
-    if (dragStart && !dragStart.moved) { closeGuess(); hideFact(); }
+    if (dragStart && !dragStart.moved) { closeGuess(); if (!scopeOn) hideInfo(); closeTune(); }
+    if (dragStart && performance.now() - lastMoveT > 90) vel = 0;
     dragStart = null;
-    if (!reduced && Math.abs(vel) > 0.0004) coast(); else onViewChanged(false);
+    if (!reduced && Math.abs(vel) > 0.0002) coasting = true;
   }
 }
 stage.addEventListener('pointerup', endPointer);
 stage.addEventListener('pointercancel', endPointer);
-function coast() {
-  let last = performance.now();
-  const step = (t) => {
-    const dt = t - last; last = t;
-    view.heading = wrap(view.heading + vel * dt); vel *= Math.pow(0.992, dt);
-    onViewChanged(true);
-    if (Math.abs(vel) > 0.00005 && pointers.size === 0) requestAnimationFrame(step); else onViewChanged(false);
-  };
-  requestAnimationFrame(step);
+stage.addEventListener('wheel', (e) => { e.preventDefault(); if (!flying) setFov(fovTarget * Math.exp(e.deltaY * 0.0015)); }, { passive: false });
+$('z-in').onclick = () => setFov(fovTarget / 1.6);
+$('z-out').onclick = () => setFov(fovTarget * 1.6);
+const FOV_MIN = 2.5 * Math.PI / 180, FOV_MAX = 120 * Math.PI / 180;
+function clampPitch(p) { return Math.max(-0.45, Math.min(0.75, p)); }
+function setFov(f, immediate) {
+  fovTarget = Math.max(FOV_MIN, Math.min(FOV_MAX, f));
+  if (immediate || reduced) { view.hfov = fovTarget; viewMoved(); }
 }
-stage.addEventListener('wheel', (e) => { e.preventDefault(); setFov(view.hfov * Math.exp(e.deltaY * 0.0012)); }, { passive: false });
-$('z-in').onclick = () => animateFov(view.hfov / 1.6);
-$('z-out').onclick = () => animateFov(view.hfov * 1.6);
-function clampPitch(p) { return Math.max(-0.35, Math.min(0.75, p)); }
-function setFov(f) { view.hfov = Math.max(2.5 * Math.PI / 180, Math.min(140 * Math.PI / 180, f)); onViewChanged(true); clearTimeout(idleTimer); idleTimer = setTimeout(() => onViewChanged(false), 180); }
-function animateFov(target, dur = 380) {
-  const from = view.hfov, t0 = performance.now();
-  const step = (t) => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3); setFov(from + (target - from) * e); if (k < 1) requestAnimationFrame(step); };
-  requestAnimationFrame(step);
-}
-function animateTo(heading, pitch, dur = 900) {
+function animateTo(heading, pitch, dur = 1100) {
   const h0 = view.heading, p0 = view.pitch, dh = angDiff(heading, h0), t0 = performance.now();
-  const step = (t) => { const k = Math.min(1, (t - t0) / dur), e = k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
-    view.heading = wrap(h0 + dh * e); view.pitch = p0 + (pitch - p0) * e; onViewChanged(k < 1); if (k < 1) requestAnimationFrame(step); };
-  if (reduced) { view.heading = heading; view.pitch = pitch; onViewChanged(false); } else requestAnimationFrame(step);
+  if (reduced) { view.heading = heading; view.pitch = pitch; viewMoved(); return; }
+  const step = (t) => { const k = Math.min(1, (t - t0) / dur), e = easeIO(k);
+    view.heading = wrap(h0 + dh * e); view.pitch = p0 + (pitch - p0) * e; viewMoved(); if (k < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
 }
-let rafLow = 0;
-function onViewChanged(moving) {
-  interacting = moving;
-  drawPano(); updateLabels(); drawMini();
-  if (moving) {
-    const now = performance.now();
-    if (now - rafLow > 70) { rafLow = now; requestRender(0.5); }
-    clearTimeout(idleTimer); idleTimer = setTimeout(() => onViewChanged(false), 220);
-  } else requestRender(1);
-  if (guessTarget) positionGuess();
-}
-window.addEventListener('resize', () => { if (!CUR) return; resizeCanvases(); onViewChanged(false); });
+function onViewChanged() { viewMoved(); }
+window.addEventListener('resize', () => { if (!CUR) return; resizeCanvases(); newGen(); viewMoved(); });
 window.addEventListener('keydown', (e) => {
-  if (!CUR) return;
+  if (!CUR || flying) return;
   if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
   if ($('play').classList.contains('fade')) return;
-  const p = 6 * Math.PI / 180;
-  if (e.key === 'ArrowLeft') { view.heading = wrap(view.heading - p); onViewChanged(false); }
-  if (e.key === 'ArrowRight') { view.heading = wrap(view.heading + p); onViewChanged(false); }
-  if (e.key === '+' || e.key === '=') animateFov(view.hfov / 1.6);
-  if (e.key === '-') animateFov(view.hfov * 1.6);
+  const p = 8 * Math.PI / 180;
+  if (e.key === 'ArrowLeft') animateTo(wrap(view.heading - p), view.pitch, 420);
+  if (e.key === 'ArrowRight') animateTo(wrap(view.heading + p), view.pitch, 420);
+  if (e.key === 'ArrowUp' && e.shiftKey) flyStep(1);
+  if (e.key === 'ArrowDown' && e.shiftKey) flyStep(-1);
+  if (e.key === '+' || e.key === '=') setFov(fovTarget / 1.6);
+  if (e.key === '-') setFov(fovTarget * 1.6);
 });
+$('fly-up').onclick = () => flyStep(1);
+$('fly-down').onclick = () => flyStep(-1);
 
+// ---------- sliders popover ----------
+function closeTune() { tuneOn = false; $('tune').classList.add('off'); $('tune-btn').classList.remove('on'); }
+$('tune-btn').onclick = (e) => { e.stopPropagation(); tuneOn = !tuneOn; $('tune').classList.toggle('off', !tuneOn); $('tune-btn').classList.toggle('on', tuneOn); };
+function segInit(id, cur, onPick) {
+  const el = $(id);
+  const paint = (v) => el.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  paint(cur);
+  el.querySelectorAll('button').forEach(b => b.onclick = () => { paint(b.dataset.v); onPick(b.dataset.v); });
+}
+let visT = null;
+$('vis').value = PREFS.vis; $('vis-val').textContent = PREFS.vis + ' km';
+$('vis').addEventListener('input', () => {
+  PREFS.vis = +$('vis').value; $('vis-val').textContent = PREFS.vis + ' km'; savePrefs();
+  clearTimeout(visT); visT = setTimeout(() => { if (CUR && !flying) { newGen(); updateLabels(); } }, 160);
+});
+segInit('seg-theme', PREFS.theme, (v) => { PREFS.theme = v; savePrefs(); applyTheme(); if (CUR && !flying) newGen(); needDraw = true; });
+segInit('seg-labels', PREFS.labels, (v) => { PREFS.labels = v; savePrefs(); needDraw = true; });
+segInit('seg-contours', PREFS.contours ? 'on' : 'off', (v) => { PREFS.contours = v === 'on'; savePrefs(); if (CUR && !flying) newGen(); });
+function applyTheme() {
+  document.body.dataset.theme = PREFS.theme;
+  document.querySelector('meta[name=theme-color]') && document.querySelector('meta[name=theme-color]').setAttribute('content', TH().bg);
+  try { applyMapTheme(); } catch (e) {}   // the map may not exist yet; it themes itself on load
+}
+document.body.dataset.theme = PREFS.theme;
 // =====================================================================================
 //  Game: guessing
 // =====================================================================================
@@ -1054,10 +1469,10 @@ function openGuess(p) {
   guessTarget = p; tries = 0; hintUsed = false;
   gIn.value = ''; gMsg.textContent = ''; gMsg.className = 'msg'; renderAc();
   $('g-title').textContent = 'Which peak is this?';
-  gEl.hidden = false; positionGuess(); updateLabels();
+  gEl.hidden = false; positionGuess(); needDraw = true;
   setTimeout(() => gIn.focus({ preventScroll: true }), 30);
 }
-function closeGuess() { guessTarget = null; gEl.hidden = true; updateLabels(); }
+function closeGuess() { guessTarget = null; gEl.hidden = true; needDraw = true; }
 function positionGuess() {
   if (!guessTarget) return;
   const { W, H } = cssSize();
@@ -1119,22 +1534,11 @@ function solve(p, pts) {
   const s = vpSolved(CUR.def.id);
   if (!s[p.name]) { s[p.name] = pts; SAVE.score += pts; persist(); }
   closeGuess();
-  showFact(p, pts);
-  updateProgress(); updateLabels(); drawMini();
+  showPeakInfo(p, pts === 3 ? 'First try · ' : pts === 2 ? 'Got it · ' : pts === 1 ? 'There it is · ' : '', pts);
+  updateProgress(); needDraw = true;
   const left = CUR.peaks.filter(q => q.visible && !s[q.name]);
   if (!left.length) setTimeout(showDone, 1400);
 }
-let factTimer = null;
-function showFact(p, pts) {
-  const f = $('fact');
-  const praise = pts === 3 ? 'First try. ' : pts === 2 ? 'Got it. ' : pts === 1 ? 'There it is. ' : '';
-  f.innerHTML = `<div><b></b> <span class="meta"></span></div><div class="txt"></div>`;
-  f.querySelector('b').textContent = praise + p.name;
-  f.querySelector('.meta').textContent = `${fmt(p.h)} m · ${fmt(p.d / 1000)} km ${dirWord(p.az)} · +${pts}`;
-  f.querySelector('.txt').textContent = p.fact;
-  f.hidden = false; clearTimeout(factTimer); factTimer = setTimeout(hideFact, 7000);
-}
-function hideFact() { $('fact').hidden = true; }
 function updateProgress() {
   const s = vpSolved(CUR.def.id), vis = CUR.peaks.filter(p => p.visible);
   $('pl-progress').textContent = `${vis.filter(p => s[p.name] !== undefined).length}/${vis.length}`;
@@ -1153,7 +1557,6 @@ $('done-next').onclick = () => {
   const i = VIEWPOINTS.findIndex(v => v.id === CUR.def.id);
   goHome(VIEWPOINTS[(i + 1) % VIEWPOINTS.length]);
 };
-$('names-toggle').onclick = () => { showAll = !showAll; $('names-toggle').textContent = showAll ? 'Hide names' : 'Show all names'; closeGuess(); updateLabels(); };
 
 // =====================================================================================
 //  Loading a viewpoint
@@ -1169,7 +1572,7 @@ async function prepareViewpoint(def) {
   const levels = await buildLevels(vp, (d, n) => showLoader(`Streaming terrain ${d}/${n}`, d / Math.max(1, n)));
   // snap viewer to the local high point (summits) and set eye height
   const sn = snapHigh(levels, vp.lat, vp.lon, def.snap);
-  vp.lat = sn.lat; vp.lon = sn.lon; vp.eye = sn.h + def.eyeAdd;
+  vp.lat = sn.lat; vp.lon = sn.lon; vp.eye = sn.h + def.eyeAdd; vp.ground = sn.h;
   // peaks: snap to highest cell within 1.6 km
   vp.peaks = def.peaks.map(([name, lat, lon, h, fact], i) => {
     const s = snapHigh(levels, lat, lon, 1600);
@@ -1196,29 +1599,27 @@ async function enterViewpoint(def) {
   try {
     const { vp, levels } = await prepareViewpoint(def);
     showLoader('Tracing rivers and sight lines', 1);
-    if (worker) worker.terminate();
-    workerReady = false; lastShown = 0; frame = null;
-    worker = makeWorker();
-    await new Promise((res) => { readyResolve = res; worker.postMessage({ cmd: 'init', levels: levels.map(l => ({ z: l.z, W: l.W, maxD: l.maxD, x0: l.x0, y0: l.y0, w: l.w, h: l.h, data: l.data })), vp: { lat: vp.lat, lon: vp.lon, eye: vp.eye, maxD: vp.maxD } }); });
-    // which quiz peaks can actually be seen
-    const vis = await new Promise((res) => { losResolve = res; worker.postMessage({ cmd: 'los', items: vp.peaks.map(p => ({ az: p.az, d: p.d, h: p.hs })) }); });
+    await startWorkers(levels.map(l => ({ z: l.z, W: l.W, maxD: l.maxD, x0: l.x0, y0: l.y0, w: l.w, h: l.h, data: l.data })),
+      { lat: vp.lat, lon: vp.lon, eye: vp.eye, maxD: vp.maxD });
+    const w0 = workers[0];
+    // which quiz peaks can actually be seen (from the ground)
+    const vis = await new Promise((res) => { w0._los = res; w0.postMessage({ cmd: 'los', eye: vp.eye, items: vp.peaks.map(p => ({ az: p.az, d: p.d, h: p.hs })) }); });
     vp.peaks.forEach((p, i) => { p.visible = vis[i] && p.d < vp.maxD - 5000; });
-    // rivers from the terrain
-    const rv = await new Promise((res) => { riverResolve = res; worker.postMessage({ cmd: 'rivers', level: 1, radius: 48000, threshold: 450 }); });
-    LEVELS = levels;
+    // rivers from the terrain (z10 mosaic)
+    const lvl = levels.findIndex(l => l.z === 10);
+    const rv = await new Promise((res) => { w0._riv = res; w0.postMessage({ cmd: 'rivers', level: lvl, radius: 48000, threshold: 450 }); });
     CUR = { def, ...vp, riverT: 450 };
-    rivers = { segs: new Float32Array(rv.segs), visible: [], tagEls: [] };
+    rivers = { segs: new Float32Array(rv.segs), ang: null, n: 0, vis: null, buckets: null, anchors: [], tagEls: [] };
     addDetailedRiversToMap(def.id, rivers.segs);
+    flyIdx = 0; eyeOff = 0; flying = null; selPeak = null; infoPeak = null;
     // initial view: face the main peak
     const main = vp.peaks.find(p => p.name === def.main && p.visible) || vp.peaks.find(p => p.visible) || vp.peaks[0];
     const W = stage.clientWidth || innerWidth;
-    view.hfov = (W < 640 ? 50 : 62) * Math.PI / 180;
+    view.hfov = fovTarget = (W < 640 ? 50 : 62) * Math.PI / 180;
     view.heading = main.az;
     view.pitch = Math.max(0.0, Math.min(0.25, Math.atan2(main.hs - main.d * main.d * CURV - vp.eye, main.d) * 0.6));
     $('pl-name').textContent = def.name;
-    $('pl-cell').textContent = def.cellName;
-    showAll = false; $('names-toggle').textContent = 'Show all names';
-    buildLabelEls(); updateProgress();
+    buildLabelEls(); updateProgress(); updateFlyUI();
     hideLoader();
     return true;
   } catch (e) {
@@ -1229,27 +1630,56 @@ async function enterViewpoint(def) {
 }
 
 function showPlay() {
+  $('veil').style.transition = 'none'; $('veil').style.opacity = '1';
   $('home').classList.add('fade'); $('play').classList.remove('fade');
-  resizeCanvases(); onViewChanged(false);
+  resizeCanvases();
+  void $('veil').offsetWidth; $('veil').style.transition = '';
+  newGen(); viewMoved();
+  setTimeout(revealPano, 2500);   // never leave the veil up
+}
+function resizeCanvases() {
+  const { W, H } = cssSize(), dpr = Math.min(2, window.devicePixelRatio || 1);
+  for (const c of [pano, fx]) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
+  const cw = compassC.clientWidth; compassC.width = Math.round(cw * dpr); compassC.height = Math.round(30 * dpr);
+  const mw = mini.clientWidth || 168; mini.width = Math.round(mw * dpr); mini.height = Math.round(mw * dpr);
 }
 function goHome(selectNext) {
   $('play').classList.add('fade'); $('home').classList.remove('fade');
-  closeGuess(); hideFact();
+  closeGuess(); closeTune(); hideInfo();
+  if (scopeOn) $('scope-btn').click();
+  flying = null; stopWorkers();
   refreshHome();
-  if (map && CUR) {
-    map.flyTo({ center: [CUR.def.lon, CUR.def.lat], zoom: 6.4, pitch: 30, bearing: 0, duration: reduced ? 0 : 2600 });
-  }
+  if (map && CUR) map.flyTo({ center: [CUR.def.lon, CUR.def.lat], zoom: 6.4, pitch: 30, bearing: 0, duration: reduced ? 0 : 2600 });
   if (selectNext) setTimeout(() => selectVp(selectNext), reduced ? 0 : 1400);
 }
 $('to-map').onclick = () => goHome();
 
-// animation loop for river glints
+// one animation loop: smooth zoom, momentum, fly-up film, redraw when anything moved, river glints
+let lastT = performance.now();
 function tick(t) {
-  if (CUR && !$('play').classList.contains('fade')) { drawRivers(t); drawCompass(); }
+  const dt = Math.min(64, t - lastT); lastT = t;
+  if (CUR && !$('play').classList.contains('fade')) try {
+    if (Math.abs(fovTarget - view.hfov) > 1e-6) {
+      view.hfov += (fovTarget - view.hfov) * (1 - Math.exp(-dt / 90));
+      if (Math.abs(fovTarget - view.hfov) < 1e-5) view.hfov = fovTarget;
+      viewMoved();
+    }
+    if (coasting && !dragStart) {
+      view.heading = wrap(view.heading + vel * dt); vel *= Math.exp(-dt / 260);
+      if (Math.abs(vel) < 0.00003) coasting = false;
+      viewMoved();
+    }
+    if (flying) stepFly(t);
+    if (needDraw) {
+      needDraw = false;
+      drawPano(); updateLabels(); drawCompass(); drawRose(); drawMini();
+      if (scopeOn) updateScope(); if (guessTarget) positionGuess();
+    }
+    drawRivers(t);
+  } catch (e) { console.error(e); }
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
-
 // =====================================================================================
 //  Home: map, grid, viewpoint cards
 // =====================================================================================
@@ -1354,6 +1784,7 @@ function initMap() {
     maxBounds: [[66, 20], [102, 41]], attributionControl: { compact: true },
   });
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+  map.on('load', applyMapTheme);
   for (const v of VIEWPOINTS) {
     const el = document.createElement('div'); el.className = 'vp-marker';
     el.innerHTML = '<div class="nm"></div><div class="dot"></div>'; el.querySelector('.nm').textContent = v.short;
@@ -1368,6 +1799,25 @@ function initMap() {
     new maplibregl.Marker({ element: el }).setLngLat([lon, lat]).addTo(map);
   }
   refreshHome();
+}
+
+// Light / dark home map, matching the panorama theme
+function applyMapTheme() {
+  if (!map || !map.getLayer || !map.getLayer('relief')) return;
+  const L = PREFS.theme === 'light';
+  try {
+    map.setPaintProperty('bg', 'background-color', L ? '#eceef0' : '#1b2430');
+    map.setPaintProperty('relief', 'color-relief-color', ['interpolate', ['linear'], ['elevation'], ...(L
+      ? [0, '#f3f3f1', 800, '#ebeae7', 2000, '#e0ded9', 3500, '#d2d0cb', 4800, '#e4e6ea', 5600, '#f4f5f7', 7000, '#ffffff']
+      : [0, '#1d2733', 800, '#243243', 2000, '#33465c', 3500, '#4d6680', 4800, '#7d93ab', 5600, '#c3d0de', 7000, '#f2f6fb'])]);
+    map.setPaintProperty('shade', 'hillshade-shadow-color', L ? ['#7c828c', '#8d939c', '#7c828c', '#9096a0'] : ['#06090f', '#0a0f18', '#06090f', '#0b1019']);
+    map.setPaintProperty('shade', 'hillshade-exaggeration', L ? 0.5 : 0.6);
+    map.setPaintProperty('rivers', 'line-color', L ? '#1677c9' : '#6ec3ff');
+    map.setPaintProperty('rivers-detail', 'line-color', L ? '#1677c9' : '#6ec3ff');
+    map.setSky(L
+      ? { 'sky-color': '#ffffff', 'horizon-color': '#e9ecef', 'fog-color': '#f1f2f4', 'sky-horizon-blend': 0.7, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.8, 'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 1, 10, 1, 13, 0] }
+      : { 'sky-color': '#050a14', 'horizon-color': '#24456b', 'fog-color': '#1b2a3d', 'sky-horizon-blend': 0.7, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.8, 'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 1, 10, 1, 13, 0] });
+  } catch (e) { console.warn(e); }
 }
 
 // Load MapLibre from the first CDN that answers. The game still works without it (no fly-in).

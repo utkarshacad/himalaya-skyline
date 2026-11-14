@@ -11,34 +11,85 @@
 
 ## Loading a viewpoint
 
-`buildLevels()` builds three mosaics around the viewer:
+`buildLevels()` builds four mosaics around the viewer. Near the end of each level's range the height fades into the next level over the last 20 %, so level changes don't show as shading bands.
 
 | Level | Zoom | Used for distances | Covers |
 |---|---|---|---|
-| 0 | z11 (~70 m) | < 12 km | 14 km |
-| 1 | z10 (~140 m) | < 62 km | 66 km |
-| 2 | z9 (~270 m) | < 235 km | 243 km |
+| 0 | z12 (~33 m) | < 4.5 km | 6 km |
+| 1 | z11 (~70 m) | < 12 km | 14 km |
+| 2 | z10 (~140 m) | < 62 km | 66 km |
+| 3 | z9 (~270 m) | < 235 km | 243 km |
 
-- Corner tiles outside the circle are skipped. That's about 80–115 tiles, fetched 12 at a time.
-- On the user's machine Kausani loaded **80 tiles in about 6 s**.
-- The tile cache is cleared on each new viewpoint to cap memory.
+- Corner tiles outside the circle are skipped. Tiles are fetched 12 at a time; the cache is cleared on each new viewpoint.
+- The levels are copied into a **pool of 1–4 workers** (`hardwareConcurrency − 1`). The main thread keeps no copy.
 
-## Panorama renderer (Web Worker)
+## Panorama renderer (v2, November 2026)
 
-The shared code lives in `<script id="shared-src">`. It's `eval`'d in the page and prepended to the worker source, which is created from a Blob.
+The goal is PeakFinder's feel: a monochrome line drawing, and panning with no lag.
 
-- **Projection:** cylindrical. Column → azimuth, row → elevation angle, both linear in `ppr` (pixels per radian).
-- **Per column:** march outward from 15 m to `maxD`, with step `max(minStep, d*k)` (`k` = 0.0042 at full quality, 0.009 while dragging).
-  - Height drops with Earth curvature plus refraction: `d²·(1−0.13)/(2R)`.
-  - **Front-to-back fill:** when a sample projects above the current top, fill down to the old top with a colour from distance haze, slope light and a little snow tint above 4,800 m, and record its **depth**.
-  - When the newly visible terrain is much farther than the last (`d > lastD*1.1 + 250`), draw a **ridge line** at the old top. White, alpha fading with distance.
-  - The skyline gets the strongest line.
-- **Interaction:** a low-quality half-resolution render while dragging (about every 70 ms), then full quality when idle. The last frame is shifted and scaled instantly while the worker catches up.
-- **Measured** on the user's machine, main-thread version: 1400×620 full quality in about **475 ms**, 700×480 in about 290 ms.
+### Render once, pan by sliding images
+- The full 360° is cut into **vertical strips 256 render-pixels wide**. Each is rendered in a worker and kept as an `ImageBitmap` plus a `Uint16` depth buffer in decametres (65535 = sky).
+- Strips are queued nearest-to-the-view first and spread round-robin over the workers. A worker renders one strip per macrotask, so `cancel` messages get through between strips.
+- **Panning only draws finished strips** at new offsets (`drawGen`). No worker work happens while dragging.
+- A **generation** (`newGen`) is one full set of strips for a given zoom, pitch window, eye height, visibility range, theme and contour setting. A new one is started when:
+  - zoom changes by more than 1.3× or less than 0.62×;
+  - the view leaves the pitch window, which is 1.7× the screen height;
+  - the visibility, theme, contours or fly-up height change;
+  - the window is resized.
+- While a new generation fills in, the previous one stays on screen, scaled.
+- Render scale is `min(1.5, devicePixelRatio)`, lowered until the full 360° is at most 14 M pixels.
+- **Measured** in headless Chromium (software GL, 3 workers, 1330×640):
+  - Pangarchulla: the view was sharp **0.7 s** after the terrain arrived, and the whole 360° took **0.9 s**.
+  - A synthetic pan held **16.7 ms** per frame (60 fps), median and p95.
+
+### How a column is drawn (`renderStrip`)
+- March outward from 12 m with step `max(8 m, d·0.0042)`. Apply Earth curvature plus refraction, `d²·(1−0.13)/(2R)`.
+- Fill front to back. Each newly visible stretch gets a flat tone that combines:
+  - near → far colour;
+  - slope light (facing the viewer = lighter in dark, white in light);
+  - a little snow above 4,900 m;
+  - haze toward the horizon colour as distance approaches the visibility limit.
+- **Crest lines:** while the ray is hidden, track the lowest angle reached (`minHid`). When terrain becomes visible again, the crest it was hidden behind gets a line if `dip = angTop − minHid > 0.0006 rad` and `dip·d > 5 m`.
+  - Line weight is `0.2 + drop/110`, multiplied by a distance fade.
+  - The fade goes to zero between 55 % and 100 % of the visibility range.
+  - This replaces v1's rule (`d > lastD·1.1 + 250`), which drew nothing in the first 2–3 km and left a flat foreground wedge.
+- **Skyline:** the strongest line, fading only near the visibility limit.
+- **Height contours (optional):** faint 100 m lines, with a stronger one every 500 m, on visible terrain within 14 km.
+
+### Themes
+`THEMES.dark` follows PeakFinder's dark theme and `THEMES.light` its light theme (white ground, ink lines). Colours go to the worker as RGB arrays. CSS custom properties on `body[data-theme]` theme the labels, the telescope and the home map (`applyMapTheme`).
+
+### Fly-up
+- PeakFinder's "elevation offset". Steps are 0, +300, +800, +1,600, +3,000 and +5,000 m.
+- On a step, the current picture is frozen as frame 0. Workers then render **7 half-resolution frames** at eased heights, at top priority (about 0.3 s).
+- The frames play as a cross-fading film over about 2.3–2.9 s. Meanwhile, full-quality strips for the new height render behind it.
+- Labels follow the animated eye height. Quiz visibility is still decided from the ground.
+
+### Interaction
+- Dragging is 1:1, and momentum decays with τ = 260 ms, independent of frame rate.
+- Wheel and buttons ease the zoom toward a target (τ = 90 ms); pinch is direct.
+- Arrow keys turn with eased animation; Shift + ↑/↓ flies up or down.
+- A single `requestAnimationFrame` loop redraws only when something moved. It also draws the river glints.
+
+### Chrome
+- Round icon buttons in the corners:
+  - map / back;
+  - compass rose, which toggles the mini-map;
+  - fly-up chevrons;
+  - sliders (visibility 20–230 km, theme, peak names Quiz/All/Marked, contours);
+  - zoom;
+  - telescope.
+- A thin degree ruler runs along the bottom.
+- The bottom pill shows the viewpoint. The **info bar** replaces it for:
+  - a tapped label;
+  - a just-solved peak (with its fact);
+  - telescope readings: terrain height and distance from the depth buffer, or "Unnamed peak · Name it".
+- **Marks:** favourite (♥) and flag (⚑) per peak, saved in `SAVE.marks` and shown on labels and the mini-map.
+- **Labels:** slanted −52°, "Name 7,120 m", on one band above the highest labelled summit, with thin leader lines. They are decluttered left to right, keeping the higher peak.
 
 ## Line of sight (which peaks become questions)
 
-The worker `los` command marches each peak's ray. The peak is visible if no terrain rises above the sight line by more than 0.0006 rad.
+The worker `los` command (run on worker 0, from the ground eye height) marches each peak's ray. The peak is visible if no terrain rises above the sight line by more than 0.0006 rad.
 
 ## Rivers traced from terrain
 
@@ -49,7 +100,7 @@ The worker `rivers` command runs on the z10 mosaic within 48 km:
 
 On Kausani this gave **10,739 segments in about 445 ms**. They sit exactly in the Garur and Gomati valleys on real terrain.
 
-**In the panorama:** segments are projected and kept only if the depth buffer at their midpoint matches their distance (not hidden). Each frame draws them in river blue, with width by catchment size and distance, plus a slow travelling glint (`sin(t - phase(lon, lat))`). Named rivers are labelled at the visible segment nearest a hand-placed anchor point.
+**In the panorama:** segment angles are computed once per generation and bucketed by strip. As each strip arrives, its segments are tested against that strip's depth buffer and kept if not hidden. Each frame draws them in river blue, with width by catchment size and distance, plus a slow travelling glint (`sin(t - phase(lon, lat))`). Named rivers are labelled at the visible segment nearest a hand-placed anchor point.
 
 ## Map home
 
@@ -59,7 +110,7 @@ On Kausani this gave **10,739 segments in about 445 ms**. They sit exactly in th
 
 ## Persistence
 
-Progress (solved peaks with points, and total score) is kept in `localStorage` under the key `himalaya-skyline`. Reads and writes are wrapped in try/catch.
+Progress (solved peaks with points, total score, and marks) is kept in `localStorage` under the key `himalaya-skyline`. Display preferences (theme, visibility, label mode, contours) are under `himalaya-skyline-prefs`. Reads and writes are wrapped in try/catch.
 
 ## Testing done
 

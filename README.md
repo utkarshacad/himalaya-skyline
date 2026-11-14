@@ -15,7 +15,12 @@ Open `index.html` in Chrome or Edge with an internet connection. Double-clicking
 3. **Name the Skyline.** You see the full 360° panorama. Drag to look around and scroll or pinch to zoom. Every peak you can actually see from that spot carries a **?** marker. Click one and type its name.
    - Scoring: 3 points on the first try, 2 on the second, 1 after a hint. *Show me* reveals the answer for 0 points.
    - Each answer opens a short fact card.
-   - The mini-map in the corner shows your view cone, the traced rivers, and the peaks.
+   - The compass rose (top right) opens a mini-map with your view cone, the traced rivers, and the peaks.
+4. **Explore like PeakFinder.**
+   - **Fly up:** the chevrons on the left raise your eye up to +5,000 m in a smooth climb.
+   - **Sliders** (bottom left): visibility range (20–230 km), dark or light theme, which peak names show, and height contours.
+   - **Telescope** (bottom right): reads out what's under the crosshair, either terrain height and distance or the peak's name.
+   - **Marks:** tap a named peak to favourite (♥) or flag (⚑) it.
 
 ### Viewpoints in v1
 
@@ -37,6 +42,7 @@ Only peaks with a clear line of sight from the viewpoint become questions.
 | `docs/CONTEXT.md` | How the project came about: goals, every decision made so far, and the reasons for each. **Start here.** |
 | `docs/research-himalaya.md` | The Himalaya as a grid: belts, faults, river sections, peaks, sources. |
 | `docs/research-learning-and-peakfinder.md` | How mountain courses teach peak recognition, and how PeakFinder is built. |
+| `docs/research-peakfinder-look-and-tech.md` | Deep dive on PeakFinder's look, controls and speed, plus the gap analysis behind renderer v2. Raw notes are in `docs/research-notes/peakfinder/`. |
 | `docs/technical-design.md` | How the renderer, rivers, line-of-sight and loading work, plus test results. |
 | `docs/roadmap.md` | Open questions and what to build next. |
 | `prototypes/terrain-3d-prototype.html` | The first MapLibre 3D prototype, kept for reference. Its look was rejected. |

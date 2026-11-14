@@ -67,10 +67,35 @@ From the research and suggestions, he picked:
 - Tested on real terrain in his browser (see `technical-design.md`).
 - He then asked to push the project to its own GitHub repo with all the context. That's this repo.
 
+### Round 7: the PeakFinder look, renderer v2 (14 November 2026)
+
+- He shared PeakFinder screenshots (dark theme, target-circle telescope, sliders, marks) and later a **light theme** screenshot. He wants **both themes** in the game.
+- What he called essential:
+  - the **view of the mountains** as a line drawing;
+  - a **visibility slider** that controls how many ranges show;
+  - **butter-smooth, lag-free** panning;
+  - **cinematic camera** movement;
+  - **flags and favourites** on peaks;
+  - free exploration where **terrain height and water come first and little else is loaded**;
+  - the **fly-up** feature, "really important to the feel".
+- Exploration scope: **A first** (curated viewpoints explored deeply), **built so B can follow** (stand anywhere on the map).
+- **"The entire look of the game is what is most essential right now."** He approved all the critique fixes and said "I trust you".
+- Research and critique: `research-peakfinder-look-and-tech.md`. v1's real-terrain render showed a flat dark foreground wedge, few ridge layers, a blue fill instead of grey line-art, and laggy panning.
+- Built (renderer v2):
+  - the 360° renders once into strips across a worker pool, so panning slides images at 60 fps;
+  - crest-line detection and z12 near terrain;
+  - optional height contours;
+  - dark and light themes, with the home map themed too;
+  - visibility slider and fly-up film;
+  - telescope with info bar, marks, PeakFinder-style labels, and round-button chrome;
+  - the mini-map moved behind the compass rose.
+- Animation taste, as far as known: cinematic and smooth (eased camera, momentum, fly-in and fly-up). Terrain Travle's playful layer (sparks, mascot) has **not** been brought into Skyline; ask before adding it.
+
 ## Things he has rejected or disliked
 
 - The first prototype's look: MapLibre colour ramp, editorial panel.
-- **Any always-visible panel that covers the map.** Keep the chrome thin and out of the way.
+- **Any always-visible panel that covers the map.** Keep the chrome thin and out of the way. (v1's permanent mini-map broke this; v2 hides it behind the compass rose.)
+- **Lag.** Panning or loading that stutters, as in Google Earth.
 - From his other project (UP Travle), the topographic survey map aesthetic. It was rejected there, so avoid it here too.
 
 ## Corrections made along the way
