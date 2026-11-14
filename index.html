@@ -1106,14 +1106,59 @@ void main() {
   oDep = vec4(1.0);                                     // sky: the largest encoded distance
 }
 </script>
+<!-- Lines (flow lines; rivers in Task 8): one instance per segment, the same vertex buffer bound twice one vertex
+     apart. The quad is expanded across the segment in screen space; projection as the terrain shader. -->
+<script id="glsl-line-vs" type="text/plain">#version 300 es
+precision highp float;
+in vec3 aP0, aP1;          // east, north, height (m)
+in vec4 aB0, aB1;          // u, weight, gully, flag (unsigned bytes, normalised)
+uniform float uHeading, uPitch, uPpr, uEye, uW, uH, uCurv, uFar, uMaxD, uHalfW, uWMax, uGullyK, uTier0, uTier1;
+out float vA, vSide, vU;
+const float PI = 3.14159265358979, TAU = 6.28318530717959;
+float sm(float a, float b, float x) { return smoothstep(a, b, x); }
+void main() {
+  int corner = gl_VertexID;                              // 0..3 triangle strip: (end, side)
+  float endK = float(corner >> 1), side = float(corner & 1) * 2.0 - 1.0;
+  float d0 = length(aP0.xy), d1 = length(aP1.xy);
+  float x0 = mod(atan(aP0.x, aP0.y) - uHeading + PI, TAU) - PI, x1 = mod(atan(aP1.x, aP1.y) - uHeading + PI, TAU) - PI;
+  vec2 s0 = vec2(x0, atan(aP0.z - d0 * d0 * uCurv - uEye, max(d0, 1.0)) - uPitch) * uPpr;
+  vec2 s1 = vec2(x1, atan(aP1.z - d1 * d1 * uCurv - uEye, max(d1, 1.0)) - uPitch) * uPpr;
+  float flag = floor(aB0.w * 255.0 + 0.5), tier = mod(flag, 2.0);
+  bool drop = flag >= 2.0 || abs(x0) > 2.2 || abs(x1 - x0) > 1.0 || min(d0, d1) > uMaxD;
+  vec3 P = mix(aP0, aP1, endK); vec4 B = mix(aB0, aB1, endK);
+  float d = mix(d0, d1, endK); vec2 sp = mix(s0, s1, endK);
+  vec2 t = s1 - s0; t = dot(t, t) > 1e-8 ? normalize(t) : vec2(1.0, 0.0);
+  vec2 q = sp + vec2(-t.y, t.x) * side * uHalfW;
+  float u = B.x, conv = (B.z * 255.0 - 127.0) / 127.0;   // tanh(0.6·conv)
+  float a = B.y * uWMax
+          * (1.0 - min(1.0, 1.15 * d / uMaxD)) * (0.25 + 0.75 * sm(2000.0, 25000.0, d))
+          * sm(0.0, 0.06, u) * sm(0.0, 0.4, 1.0 - u)
+          * (1.0 - uGullyK * sm(0.0, 1.0, -conv))
+          * (tier < 0.5 ? uTier0 : uTier1);
+  vA = drop ? 0.0 : a; vSide = side * uHalfW; vU = u;
+  float z = clamp((d * 0.997 - 25.0) / uFar, 0.0, 1.0) * 2.0 - 1.0;
+  gl_Position = drop ? vec4(2.0, 2.0, 2.0, 1.0) : vec4(q.x / (uW * 0.5), q.y / (uH * 0.5), z, 1.0);
+}
+</script>
+<script id="glsl-line-fs" type="text/plain">#version 300 es
+precision highp float;
+in float vA, vSide, vU;
+uniform float uCore, uPx, uFade, uAccK;
+out vec4 o;
+void main() {
+  // box-filtered coverage of a uCore-wide line in a uPx-wide pixel (css px)
+  float cov = clamp((uCore * 0.5 + uPx * 0.5 - abs(vSide)) / uPx, 0.0, 1.0) * min(1.0, uCore / uPx);
+  o = vec4(vA * cov * uFade * uAccK, 0.0, 0.0, 0.0);
+}
+</script>
 <!-- Outlines from the distance target: a crest pixel is near terrain with far terrain (or sky) right above it.
      The skyline is strongest; ridge weight grows with the relative depth jump; both fade toward the visibility limit. -->
 <script id="glsl-edge-fs" type="text/plain">#version 300 es
 precision highp float;
 in vec2 vUv;
-uniform sampler2D uCol, uDep;
-uniform float uFar, uMaxD, uEdgeK, uSkyA, uRidgeA, uSweepR, uSkyAlpha;
-uniform vec3 uLine;
+uniform sampler2D uCol, uDep, uAcc;
+uniform float uFar, uMaxD, uEdgeK, uSkyA, uRidgeA, uSweepR, uSkyAlpha, uAccK, uFlowGain, uFlowMax;
+uniform vec3 uLine, uFlowCol;
 out vec4 o;
 float dist(ivec2 p) {
   ivec2 sz = textureSize(uDep, 0);
@@ -1134,7 +1179,13 @@ float crest(ivec2 p) {
 }
 void main() {
   ivec2 p = ivec2(gl_FragCoord.xy);
-  vec3 c = texelFetch(uCol, p, 0).rgb;
+  vec4 base = texelFetch(uCol, p, 0);
+  vec3 c = base.rgb;
+  // flow lines: the accumulated sum compressed (1 − e^(−k·v)), dimmer in shadow (alpha holds the light value)
+  if (uAccK > 0.0) {
+    float v = texelFetch(uAcc, p, 0).r * uAccK;
+    c = mix(c, uFlowCol, uFlowMax * (1.0 - exp(-uFlowGain * v)) * (0.5 + 0.5 * base.a));
+  }
   float a = max(crest(p), 0.3 * crest(p + ivec2(0, 1)));     // 1 px line plus a fainter pixel under it
   c = mix(c, uLine, clamp(a * uEdgeK, 0.0, 1.0));
   c = min(c, vec3(0.972));                               // never pure white
@@ -1539,7 +1590,12 @@ const Flow = (() => {
   return F;
 })();
 const flowLog = [];
-Flow.onSector = (s, buf, fromCache, key) => { flowLog.push({ sector: s, verts: buf.byteLength / FLOW_BYTES, fromCache, key }); };
+let flowKeep = null;                                     // tests only: keep the CPU copies of the line buffers
+Flow.onSector = (s, buf, fromCache, key) => {
+  flowLog.push({ sector: s, verts: buf.byteLength / FLOW_BYTES, fromCache, key });
+  if (flowKeep) flowKeep[s] = buf;
+  if (GLPano.ok) { GLPano.setFlowSector(s, buf, true); needDraw = true; }
+};
 
 async function startWorkers(levels, vpMsg) {
   stopWorkers();
@@ -1632,6 +1688,7 @@ function drawGL() {
   V.heading = view.heading; V.pitch = view.pitch; V.hfov = view.hfov; V.eye = curEye(); V.ground = CUR.ground; V.maxD = PREFS.vis * 1000;
   V.W = stage.clientWidth; V.H = stage.clientHeight; V.dpr = window.devicePixelRatio || 1;
   GLPano.render(V);
+  if (GLPano.fading) needDraw = true;
   stats.glFrames++;
   if (GLPano.ready) revealPano();
 }
@@ -1709,15 +1766,16 @@ const GL_FAR = 300000;                                  // distance encoding ran
 const GL_THEMES = {
   dark: { skyTop: '#0b0d11', skyHor: '#2b313a', near: '#0f1114', far: '#2a2f37', glow: '#8d939c', deep: '#07080a', mist: '#3a414b',
           glowK: .18, deepK: .3, sun: 1, curvK: .55, haze: .0, mistK: 1, mistLo: 120, mistHi: 1100, line: '#ffffff', skyA: .58, ridgeA: .55,
-          snow: '#9aa2ad', snowK: .5, snowLine: 4900 },
+          snow: '#9aa2ad', snowK: .5, snowLine: 4900,
+          flowCol: '#eceff4', flowGain: .8, flowMax: .8, gullyK: .7 },
   // Ink & Mist: warm paper, ink-wash ranges that lighten with distance, paper-coloured mist in the valleys
   light: { skyTop: '#f6f3ec', skyHor: '#ece8de', near: '#4b4844', far: '#d8d3c8', glow: '#bcb7ad', deep: '#2f2d2a', mist: '#e6e2d8',
           glowK: .4, deepK: .55, sun: 1, curvK: .5, haze: .25, mistK: 1.15, mistLo: 120, mistHi: 1100, line: '#1d1c1a', skyA: .8, ridgeA: .7,
           snow: '#d8d4ca', snowK: .25, snowLine: 4900 },
 };
 const GLPano = (() => {
-  const P = { ok: false, ready: false, canvas: null, gl: null, art: { edges: true, snow: true, flow: true, fine: true, rivers: true } };
-  let gl, progT, progSky, progEdge, vao = null, nIdx = 0, fbo = null, texCol = null, texDep = null, rbDepth = null, fw = 0, fh = 0;
+  const P = { ok: false, ready: false, canvas: null, gl: null, flowOn: true, flowMode: 'off', sectors: [], fading: false, art: { edges: true, snow: true, flow: true, fine: true, rivers: true } };
+  let gl, progT, progSky, progEdge, progLine, accFbo = null, texAcc = null, vao = null, nIdx = 0, fbo = null, texCol = null, texDep = null, rbDepth = null, fw = 0, fh = 0;
   let theme = null, last = null, depthCache = null;
   const U = {};
   const rgb = (h) => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
@@ -1727,6 +1785,7 @@ const GLPano = (() => {
     const p = gl.createProgram();
     gl.attachShader(p, sh(gl.VERTEX_SHADER, src(vsId))); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, src(fsId)));
     gl.bindAttribLocation(p, 0, 'aPos'); gl.bindAttribLocation(p, 1, 'aAttr'); gl.bindAttribLocation(p, 2, 'aFloor');
+    gl.bindAttribLocation(p, 4, 'aP0'); gl.bindAttribLocation(p, 5, 'aB0'); gl.bindAttribLocation(p, 6, 'aP1'); gl.bindAttribLocation(p, 7, 'aB1');
     gl.linkProgram(p);
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
     const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
@@ -1737,7 +1796,8 @@ const GLPano = (() => {
     progT = program('glsl-terrain-vs', 'glsl-terrain-fs');
     progSky = program('glsl-screen-vs', 'glsl-sky-fs');
     progEdge = program('glsl-screen-vs', 'glsl-edge-fs');
-    vao = null; nIdx = 0; fbo = null; fw = fh = 0;
+    progLine = program('glsl-line-vs', 'glsl-line-fs');
+    vao = null; nIdx = 0; fbo = null; accFbo = null; texAcc = null; fw = fh = 0; P.halved = false; P.flowMode = 'off'; P.sectors = [];
   }
   P.init = (canvas) => {
     P.canvas = canvas;
@@ -1786,9 +1846,12 @@ const GLPano = (() => {
     stats.themeBuilds = (stats.themeBuilds || 0) + 1;
   };
   // the drawing buffer: css size × min(dpr, 2), capped at 4.2 M pixels
-  P.bufferScale = (W, H, dpr) => Math.min(Math.min(2, dpr || 1), Math.sqrt(4.2e6 / Math.max(1, W * H)));
+  P.bufferScale = (W, H, dpr) => {
+    const mx = gl ? gl.getParameter(gl.MAX_TEXTURE_SIZE) : 4096;
+    return Math.min(Math.min(2, dpr || 1), Math.sqrt(4.2e6 / Math.max(1, W * H)), mx / Math.max(1, W), mx / Math.max(1, H)) * (P.halved ? 0.5 : 1);
+  };
   function target(w, h) {
-    if (fbo && fw === w && fh === h) return;
+    if (fbo && fw === w && fh === h) return true;
     if (fbo) { gl.deleteFramebuffer(fbo); gl.deleteTexture(texCol); gl.deleteTexture(texDep); gl.deleteRenderbuffer(rbDepth); }
     const tex = () => { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, w, h);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -1801,13 +1864,52 @@ const GLPano = (() => {
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rbDepth);
     gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
     fw = w; fh = h;
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) { gl.bindFramebuffer(gl.FRAMEBUFFER, null); fbo = null; fw = fh = 0; return false; }
+    // flow-line accumulation: one channel, sharing the terrain's depth buffer. Half float where the GPU can
+    // render to it, else 8 bits at a quarter strength (the composite scales back), else no lines.
+    if (accFbo) { gl.deleteFramebuffer(accFbo); gl.deleteTexture(texAcc); accFbo = null; texAcc = null; }
+    const half = gl.getExtension('EXT_color_buffer_half_float') || gl.getExtension('EXT_color_buffer_float');
+    P.flowMode = 'off';
+    for (const [mode, fmt] of half ? [['half', gl.R16F], ['byte', gl.R8]] : [['byte', gl.R8]]) {
+      const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texStorage2D(gl.TEXTURE_2D, 1, fmt, w, h);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rbDepth);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) { accFbo = f; texAcc = t; P.flowMode = mode; break; }
+      gl.deleteFramebuffer(f); gl.deleteTexture(t);
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return true;
   }
+  // flow-line sectors: one buffer + VAO each, drawn instanced (segment i = vertices i and i+1).
+  // A 64-bin azimuth mask, made once at upload, says which sectors can reach the view.
+  P.setFlowSector = (k, verts, fadeIn) => {
+    if (!P.ok || !gl || gl.isContextLost()) return;
+    P.clearFlowSector(k);
+    const n = verts.byteLength / FLOW_BYTES; if (n < 2) return;
+    const F = new Float32Array(verts); let m0 = 0, m1 = 0;
+    for (let i = 0; i < n; i += 4) { const b = Math.floor(wrap(Math.atan2(F[i * 4], F[i * 4 + 1])) / TAU * 64) & 63; if (b < 32) m0 |= 1 << b; else m1 |= 1 << (b - 32); }
+    const va = gl.createVertexArray(); gl.bindVertexArray(va);
+    const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+    for (const [loc, off] of [[4, 0], [6, FLOW_BYTES]]) { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 3, gl.FLOAT, false, FLOW_BYTES, off); gl.vertexAttribDivisor(loc, 1); }
+    for (const [loc, off] of [[5, 12], [7, FLOW_BYTES + 12]]) { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 4, gl.UNSIGNED_BYTE, true, FLOW_BYTES, off); gl.vertexAttribDivisor(loc, 1); }
+    gl.bindVertexArray(null);
+    P.sectors[k] = { va, b, n, m0, m1, t0: fadeIn ? performance.now() : -1e9 };
+    stats.lineUploads = (stats.lineUploads || 0) + 1;
+  };
+  P.clearFlowSector = (k) => { const S = P.sectors[k]; if (S && gl) { gl.deleteVertexArray(S.va); gl.deleteBuffer(S.b); } P.sectors[k] = null; };
+  P.clearLines = () => { for (let k = 0; k < P.sectors.length; k++) P.clearFlowSector(k); P.sectors = []; };
   // render({ heading, pitch, hfov, eye, maxD, W, H, dpr }) — W/H in css pixels
   P.render = (v) => {
     if (!P.ok || !gl || gl.isContextLost()) return;
     const s = P.bufferScale(v.W, v.H, v.dpr), bw = Math.max(1, Math.round(v.W * s)), bh = Math.max(1, Math.round(v.H * s));
     if (P.canvas.width !== bw || P.canvas.height !== bh) { P.canvas.width = bw; P.canvas.height = bh; }
-    target(bw, bh);
+    if (!target(bw, bh)) {
+      // the colour/distance target can't be built at this size: halve the scale once, then hand over to v2.4
+      if (!P.halved) { P.halved = true; return P.render(v); }
+      P.ok = false; P.onGiveUp && P.onGiveUp(); return;
+    }
     if (!theme) P.setTheme('dark');
     const ppr = v.W / v.hfov, T = theme;
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.viewport(0, 0, bw, bh);
@@ -1842,11 +1944,43 @@ const GLPano = (() => {
       gl.bindVertexArray(null);
       gl.disable(gl.DEPTH_TEST);
     }
+    // flow lines: additive into the accumulation target, depth-tested against the terrain, no depth writes
+    const flowK = accFbo && P.flowOn && P.art.flow && T.flowCol && vao ? (P.flowMode === 'half' ? 1 : 0.25) : 0;
+    stats.lineDraws = 0; P.fading = false;
+    if (accFbo) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, accFbo); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+    if (flowK) {
+      gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(false);
+      gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+      gl.useProgram(progLine.p); const ul = progLine.u, z = ppr / FLOW_PPR, px = 1 / s;
+      gl.uniform1f(ul.uHeading, v.heading); gl.uniform1f(ul.uPitch, v.pitch); gl.uniform1f(ul.uPpr, ppr); gl.uniform1f(ul.uEye, v.eye);
+      gl.uniform1f(ul.uW, v.W); gl.uniform1f(ul.uH, v.H); gl.uniform1f(ul.uCurv, CURV); gl.uniform1f(ul.uFar, GL_FAR); gl.uniform1f(ul.uMaxD, v.maxD);
+      gl.uniform1f(ul.uCore, 0.75); gl.uniform1f(ul.uPx, px); gl.uniform1f(ul.uHalfW, 0.375 + px); gl.uniform1f(ul.uWMax, FLOW_WMAX);
+      gl.uniform1f(ul.uGullyK, T.gullyK); gl.uniform1f(ul.uAccK, flowK);
+      gl.uniform1f(ul.uTier0, Math.max(0.45, Math.min(1, z)));
+      const t1 = P.art.fine ? Math.max(0, Math.min(1, (z - 1.3) / 0.6)) : 0; gl.uniform1f(ul.uTier1, t1 * t1 * (3 - 2 * t1));
+      // sectors whose azimuth mask meets the view (± a bin)
+      const b0 = Math.floor(wrap(v.heading - v.hfov / 2) / TAU * 64) - 1, nb = Math.ceil(v.hfov / TAU * 64) + 3;
+      let w0 = 0, w1 = 0; for (let i = 0; i < Math.min(64, nb); i++) { const b = ((b0 + i) % 64 + 64) % 64; if (b < 32) w0 |= 1 << b; else w1 |= 1 << (b - 32); }
+      const now = performance.now();
+      for (const S of P.sectors) {
+        if (!S || !((S.m0 & w0) | (S.m1 & w1))) continue;
+        const f = Math.min(1, (now - S.t0) / 600); if (f < 1) P.fading = true;
+        gl.uniform1f(ul.uFade, f * f * (3 - 2 * f));
+        gl.bindVertexArray(S.va); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, S.n - 1); stats.lineDraws++;
+      }
+      gl.bindVertexArray(null);
+      gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST); gl.depthMask(true);
+    }
     // compose to the canvas
     gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, bw, bh);
     gl.useProgram(progEdge.p); const ue = progEdge.u;
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, texCol); gl.uniform1i(ue.uCol, 0);
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, texDep); gl.uniform1i(ue.uDep, 1);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, texAcc || texCol); gl.uniform1i(ue.uAcc, 2); gl.activeTexture(gl.TEXTURE0);
+    gl.uniform1f(ue.uAccK, flowK ? 1 / flowK : 0); gl.uniform1f(ue.uFlowGain, T.flowGain || 0); gl.uniform1f(ue.uFlowMax, T.flowMax || 0);
+    if (T.flowCol) gl.uniform3fv(ue.uFlowCol, T.flowCol);
     gl.uniform1f(ue.uFar, GL_FAR); gl.uniform1f(ue.uMaxD, v.maxD); gl.uniform1f(ue.uEdgeK, P.art.edges ? 1 : 0);
     gl.uniform1f(ue.uSkyA, T.skyA); gl.uniform1f(ue.uRidgeA, T.ridgeA); gl.uniform3fv(ue.uLine, T.line);
     gl.uniform1f(ue.uSweepR, P.sweep == null ? -1 : P.sweep * v.maxD); gl.uniform1f(ue.uSkyAlpha, P.sweep == null ? 1 : P.skyAlpha || 0);
@@ -2851,7 +2985,7 @@ function snapHigh(levels, lat, lon, radius) {
 
 async function enterViewpoint(def) {
   $('fail').hidden = true;
-  Flow.cancel(); GLPano.grid = null;
+  Flow.cancel(); GLPano.grid = null; if (GLPano.ok) GLPano.clearLines();
   try {
     const { vp, levels } = await prepareViewpoint(def);
     showLoader('Tracing rivers and sight lines', 1);
@@ -2922,7 +3056,7 @@ function goHome(selectNext) {
   const v = CUR && CUR.def;
   setTimeout(() => {
     stopWorkers();
-    if (GLPano.ok) GLPano.clearMesh();
+    if (GLPano.ok) { GLPano.clearMesh(); GLPano.clearLines(); }
     home.classList.remove('grade');
     if (map && v) map.flyTo({ center: [v.lon, v.lat], zoom: 6.4, pitch: 30, bearing: 0, duration: reduced ? 0 : 3400, curve: 1.4, easing: easeIO });
     if (selectNext) setTimeout(() => selectVp(selectNext), reduced ? 0 : 1800);
@@ -3186,7 +3320,34 @@ window.__game = { VIEWPOINTS, get CUR() { return CUR; }, view, selectVp, enterVi
     return alts.map(a => (a === -Infinity ? null : H / 2 - (a - view.pitch) * p));
   },
   stats: () => ({ ...stats }),
-  Flow, FlowStore, flowLog,
+  Flow, FlowStore, flowLog, GLPano,
+  flowSettled: () => { const s = Flow.state(); return s.done === FLOW_SECTORS && !s.tracing && !GLPano.fading && !needDraw; },
+  flowMode: () => GLPano.flowMode,
+  setFov,
+  keepFlow: () => { flowKeep = []; },
+  // the most concave terrain on screen between 3 and 40 km (gully bottoms): css positions
+  concaveCells: async (n) => {
+    const g = window.__game.gridInfo().filter(c => c.d > 3000 && c.d < 40000 && c.x > 12 && c.x < cssSize().W - 12 && c.y > 4);
+    const pick = g.filter((_, k) => k % Math.max(1, Math.floor(g.length / 2500)) === 0), q = [];
+    for (const c of pick) { const e2 = (c.d < 7000 ? 70 : c.d < 20000 ? 140 : 280) * 2.5, x = c.d * Math.sin(c.az), y = c.d * Math.cos(c.az);
+      for (const [dx, dy] of [[0, 0], [e2, 0], [-e2, 0], [0, e2], [0, -e2]]) q.push([Math.atan2(x + dx, y + dy), Math.hypot(x + dx, y + dy)]); }
+    const h = (await ask(workers[0], { cmd: 'elev', pts: q })).h;
+    const cv = pick.map((c, k) => ({ x: c.x, y: c.y, conv: (4 * h[k * 5] - h[k * 5 + 1] - h[k * 5 + 2] - h[k * 5 + 3] - h[k * 5 + 4]) / ((c.d < 7000 ? 70 : c.d < 20000 ? 140 : 280) * 2.5) }));
+    return cv.filter(c => c.conv === c.conv).sort((a, b) => a.conv - b.conv).slice(0, n);
+  },
+  // line vertices (kept with keepFlow, or re-read from the store) that sit behind nearer terrain: css positions
+  hiddenLinePoints: async (n) => {
+    let bufs = flowKeep && flowKeep.length ? flowKeep : null;
+    if (!bufs) { const r = await FlowStore.get(CUR.def.id + '@' + FLOW_ALGO); bufs = r ? r.sectors : []; }
+    const g = GLPano.readDepthGrid(4), v = g.view, out = [];
+    for (const b of bufs) { if (!b) continue; const F = new Float32Array(b);
+      for (let i = 0; i < F.length / 4 && out.length < n; i += 7) {
+        const e = F[i * 4], no = F[i * 4 + 1], h = F[i * 4 + 2], d = Math.hypot(e, no); if (d > v.maxD * 0.8 || d < 2000) continue;
+        const p = project(wrap(Math.atan2(e, no)), d, h); if (p.x < 8 || p.y < 8 || p.x > v.W - 8 || p.y > v.H - 8) continue;
+        let near = Infinity; for (let j = -2; j <= 2; j++) for (let k = -2; k <= 2; k++) { const gi = Math.floor((p.x + k * 2) * g.s * g.sx), gj = Math.floor((p.y + j * 2) * g.s * g.sy); if (gi >= 0 && gj >= 0 && gi < g.w && gj < g.h) near = Math.max(near === Infinity ? 0 : near, g.data[gj * g.w + gi]); }
+        if (near < d * 0.8) out.push({ x: p.x, y: p.y }); } }
+    return out;
+  },
   FLOW: { PPR: FLOW_PPR, D0: FLOW_D0, SECTORS: FLOW_SECTORS, ALGO: FLOW_ALGO },
   traceForTest: (o = {}) => ask(workers[0], { cmd: 'flow', sector: 0, az0: view.heading, tiers: o.tiers || 2, budget: o.budget, occ: null }, [], 240000),
   askBrokenWorker: () => { const w = wireWorker(new Worker(URL.createObjectURL(new Blob(['onmessage = () => { throw new Error("boom"); };'], { type: 'text/javascript' }))));
