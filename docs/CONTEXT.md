@@ -105,6 +105,20 @@ He asked for:
 
 All but 4 were done in v2.1 (see `technical-design.md`).
 
+### Round 9: feedback on v2.1 (14 November 2026)
+
+He sent screenshots. What he asked for, and what was done in v2.2:
+1. **Light-theme contours missing on far peaks:** the contour interval is now adaptive.
+2. **The sliders panel looked tacky, with buttons too big:** it's now a small frosted card with text chips, a thin slider, and a sun/moon theme switch at the bottom.
+3. **Dark theme had too many contours; wanted PeakFinder's clean shaded mountains:** contours are sparser and fainter, shading is smoother, and ridge lines are finer.
+4. **The Himalaya grid looked tacky:** it's now a hairline schematic with the boundary rivers along the bottom.
+5. **The settings panel covered the fly-up control:** the panel opens beside its button and the fly-up control hides while it's open.
+6. **Viewpoints as small line-art mountains instead of pink dots:** done on both the map and the grid.
+7. **The screen blurred between fly-up steps:** film frames are now full resolution.
+8. **Rivers didn't blend in:** they now have a halo, a thinner core, distance fade and quieter sparkles.
+
+He said "I will be away"; the work was pushed for him to check on his phone.
+
 ## Things he has rejected or disliked
 
 - The first prototype's look: MapLibre colour ramp, editorial panel.
@@ -112,7 +126,10 @@ All but 4 were done in v2.1 (see `technical-design.md`).
 - **Lag.** Panning or loading that stutters, as in Google Earth.
 - Yellow or orange accents. Use PeakFinder pink (`#ff3b77` dark, `#e0245e` light).
 - A pale, washed-out light theme.
-- Rivers with sharp, jagged edges.
+- Rivers with sharp, jagged edges, or rivers that sit on top of the terrain instead of in it.
+- Big chunky controls ("tacky"). Prefer small, minimal, frosted UI with text chips.
+- Dense or jagged contour lines in the dark theme.
+- Blur during camera moves.
 - From his other project (UP Travle), the topographic survey map aesthetic. It was rejected there, so avoid it here too.
 
 ## Corrections made along the way

@@ -29,6 +29,7 @@
   --rb-bg: rgba(26,27,30,.9); --rb-hover: rgba(48,50,55,.95); --rose-txt: #e9ebee; --rose-bg: rgba(26,27,30,.85);
   --ruler-bg: linear-gradient(0deg, rgba(23,24,27,.9), rgba(23,24,27,0));
   --mini-bg: rgba(24,25,28,.86);
+  --panel-bg: rgba(24,25,28,.82); --panel-fg: #eef0f3; --panel-mute: #8d939c; --panel-line: rgba(255,255,255,.1); --chip-on: rgba(255,255,255,.09); --accent-soft: rgba(255,59,119,.35);
   --scope: #ffffff; --scope-dim: rgba(0,0,0,.16); --scope-x: #4fb3ff; --scope-txt: #ffffff;
 }
 body[data-theme=light] {
@@ -38,6 +39,7 @@ body[data-theme=light] {
   --rose-txt: #15171a; --rose-bg: rgba(255,255,255,.88);
   --ruler-bg: linear-gradient(0deg, rgba(255,255,255,.92), rgba(255,255,255,0));
   --mini-bg: rgba(250,250,251,.92);
+  --panel-bg: rgba(255,255,255,.84); --panel-fg: #17191c; --panel-mute: #7a8089; --panel-line: rgba(0,0,0,.09); --chip-on: rgba(0,0,0,.06); --accent-soft: rgba(224,36,94,.25);
   --scope: #15171a; --scope-dim: rgba(255,255,255,.14); --scope-x: #1e88e5; --scope-txt: #15171a;
 }
 html, body { height: 100%; margin: 0; }
@@ -96,8 +98,6 @@ body[data-theme=light] .river-lbl { color: #1677c9; text-shadow: 0 0 3px #fff, 0
 
 /* ---------- Map home ---------- */
 .vp-marker { display: grid; justify-items: center; gap: 4px; cursor: pointer; }
-.vp-marker .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff; box-shadow: 0 0 0 4px rgba(255,59,119,.25); }
-.vp-marker.done .dot { background: var(--good); box-shadow: 0 0 0 4px rgba(127,209,139,.25); }
 .vp-marker .nm { font-size: 12px; font-weight: 600; text-shadow: 0 1px 3px #000, 0 0 10px rgba(0,0,0,.8); white-space: nowrap; }
 .river-lbl { font: italic 500 12px/1 var(--f-ui); color: var(--river); text-shadow: 0 1px 3px #000; white-space: nowrap; pointer-events: none; letter-spacing: .03em; }
 
@@ -117,19 +117,38 @@ body[data-theme=light] .river-lbl { color: #1677c9; text-shadow: 0 0 3px #fff, 0
 .grid-panel {
   position: absolute; z-index: 24;
   left: max(14px, env(safe-area-inset-left, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px));
-  background: var(--chrome); border: 1px solid var(--chrome-line); border-radius: 14px;
-  padding: 12px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  padding: 14px 26px 10px 14px; border-radius: 18px; color: var(--panel-fg);
+  background: var(--panel-bg); border: 1px solid var(--panel-line); box-shadow: 0 18px 50px rgba(0,0,0,.25);
+  backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2);
 }
-.grid-panel .tag { display: block; margin-bottom: 8px; }
-.grid { display: grid; grid-template-columns: auto repeat(4, 54px); gap: 3px; font-size: 11px; }
-.grid .h { color: var(--muted); text-align: center; padding-bottom: 2px; }
-.grid .rh { color: var(--muted); padding-right: 6px; display: flex; align-items: center; white-space: nowrap; }
-.grid .cell { height: 26px; border-radius: 5px; background: rgba(255,255,255,.05); display: flex; align-items: center; justify-content: center; gap: 4px; }
-.grid .cell.greater { background: rgba(255,255,255,.1); }
-.grid .pip { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--accent); cursor: pointer; padding: 0; background: transparent; }
-.grid .pip.done { background: var(--good); border-color: var(--good); }
-.grid .pip.sel { box-shadow: 0 0 0 3px rgba(255,255,255,.35); }
-.grid-note { font-size: 11px; color: var(--muted); margin-top: 8px; max-width: 290px; line-height: 1.4; }
+.gp-title { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--panel-fg); }
+.gp-title small { font-size: 10px; letter-spacing: .04em; text-transform: none; color: var(--panel-mute); }
+.grid { display: grid; grid-template-columns: auto repeat(4, 54px); font-size: 11px; position: relative; }
+.grid .h { color: var(--panel-mute); text-align: center; padding-bottom: 6px; font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; }
+.grid .rh { color: var(--panel-mute); padding-right: 12px; display: flex; align-items: center; white-space: nowrap; height: 30px; font-size: 11px; }
+.grid .cell { height: 30px; display: grid; place-items: center; grid-auto-flow: column; gap: 2px; border-left: 1px solid var(--panel-line); border-top: 1px solid var(--panel-line); }
+.grid .cell.greater { background: linear-gradient(180deg, var(--chip-on), transparent); }
+.grid .cell.last { border-right: 1px solid var(--panel-line); }
+.grid .cell.bottom { border-bottom: 1px solid var(--panel-line); }
+.grid .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--panel-line); }
+.grid .pip { width: 26px; height: 20px; border: 0; background: transparent; padding: 0; cursor: pointer; color: var(--panel-fg); transition: transform .25s cubic-bezier(.3,1.5,.5,1), color .2s; }
+.grid .pip svg { width: 100%; height: 100%; overflow: visible; }
+.grid .pip:hover, .grid .pip.sel { transform: translateY(-2px) scale(1.12); color: var(--accent); }
+.mt .body { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
+.mt .snow { fill: currentColor; }
+.grid .pip.done .body { fill: var(--accent); stroke: var(--accent); }
+.grid .pip.done .snow { fill: #fff; }
+.grid .rivers { grid-column: 2 / -1; position: relative; height: 18px; }
+.grid .rivers span { position: absolute; top: 5px; transform: translateX(-50%); font: italic 500 9.5px/1 var(--f-ui); color: var(--river); white-space: nowrap; }
+
+/* viewpoints on the map: small line-art mountains */
+.vp-marker .mt { width: 30px; height: 22px; overflow: visible; color: #fff; filter: drop-shadow(0 1px 3px rgba(0,0,0,.65)); transition: transform .3s cubic-bezier(.3,1.5,.5,1), color .2s; transform-origin: 50% 100%; }
+.vp-marker .mt .body { fill: rgba(18,19,22,.55); }
+.vp-marker:hover .mt, .vp-marker.sel .mt { transform: scale(1.22); color: var(--accent); }
+.vp-marker.done .mt .body { fill: var(--accent); stroke: #fff; }
+.vp-marker.done .mt .snow { fill: #fff; }
+body[data-theme=light] .vp-marker .mt { color: #15171a; filter: drop-shadow(0 0 3px rgba(255,255,255,.9)); }
+body[data-theme=light] .vp-marker .mt .body { fill: rgba(255,255,255,.75); }
 
 /* ---------- Panorama (PeakFinder-style: monochrome line drawing, round icon buttons, nothing parked over the view) ---------- */
 #pano, #fx { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
@@ -217,20 +236,38 @@ body[data-theme=light] .river-lbl { color: #1677c9; text-shadow: 0 0 3px #fff, 0
 #compass { position: absolute; z-index: 15; left: 0; right: 0; bottom: 0; height: calc(30px + env(safe-area-inset-bottom, 0px)); background: var(--ruler-bg); pointer-events: none; }
 #compass canvas { width: 100%; height: 30px; display: block; }
 
-/* sliders popover (opens upward from the bottom-left button) */
+/* settings card: small, frosted, opens beside its button */
 #tune {
-  position: absolute; z-index: 32; left: max(14px, env(safe-area-inset-left, 0px)); bottom: calc(98px + env(safe-area-inset-bottom, 0px));
-  width: min(300px, calc(100vw - 28px)); box-sizing: border-box; padding: 14px; border-radius: 18px;
-  background: rgba(20,21,24,.94); color: #eef0f3; box-shadow: 0 14px 40px rgba(0,0,0,.45); display: grid; gap: 14px;
-  transform-origin: 0 100%; transition: transform .28s cubic-bezier(.2,.8,.2,1), opacity .2s;
+  position: absolute; z-index: 32; left: calc(max(14px, env(safe-area-inset-left, 0px)) + 58px); bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+  width: 236px; box-sizing: border-box; padding: 14px 16px 12px; border-radius: 16px;
+  background: var(--panel-bg); color: var(--panel-fg); border: 1px solid var(--panel-line);
+  backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow: 0 18px 50px rgba(0,0,0,.28); display: grid; gap: 11px;
+  transform-origin: 0 100%; transition: transform .3s cubic-bezier(.2,.8,.2,1), opacity .2s;
 }
-#tune.off { transform: scale(.85) translateY(10px); opacity: 0; pointer-events: none; }
-#tune .lab { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; color: #aab0ba; margin-bottom: 7px; }
-#tune .lab b { color: #fff; font: 600 12px var(--f-mono); }
-#tune input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
-.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: rgba(255,255,255,.07); border-radius: 10px; padding: 3px; gap: 3px; }
-.seg button { border: 0; border-radius: 8px; padding: 7px 4px; background: transparent; color: #cfd3da; font-size: 12.5px; cursor: pointer; }
-.seg button.on { background: #f4f5f7; color: #15171a; font-weight: 600; }
+#tune.off { transform: translateX(-6px) scale(.96); opacity: 0; pointer-events: none; }
+#play.tuning .c-ml { opacity: 0; pointer-events: none; }
+.c-ml { transition: opacity .25s; }
+.t-lab { display: flex; justify-content: space-between; align-items: baseline; font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--panel-mute); }
+.t-lab b { font: 500 11px var(--f-mono); letter-spacing: 0; text-transform: none; color: var(--panel-fg); }
+.t-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.t-vis { display: flex; flex-direction: column; align-items: stretch; gap: 9px; }
+.t-vis .t-lab { width: 100%; }
+#tune input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 14px; margin: 0; background: transparent; cursor: pointer; }
+#tune input[type=range]::-webkit-slider-runnable-track { height: 2px; border-radius: 2px; background: linear-gradient(90deg, var(--accent) var(--fill, 60%), var(--panel-line) var(--fill, 60%)); }
+#tune input[type=range]::-moz-range-track { height: 2px; border-radius: 2px; background: var(--panel-line); }
+#tune input[type=range]::-moz-range-progress { height: 2px; background: var(--accent); }
+#tune input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; margin-top: -5px; border-radius: 50%; background: var(--panel-fg); box-shadow: 0 0 0 3px var(--accent-soft); }
+#tune input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--panel-fg); box-shadow: 0 0 0 3px var(--accent-soft); }
+.chips { display: inline-flex; gap: 1px; }
+.chips button { border: 0; background: transparent; color: var(--panel-mute); font: 500 12px/1 var(--f-ui); padding: 5px 8px; border-radius: 999px; cursor: pointer; transition: color .2s, background .2s; }
+.chips button:hover { color: var(--panel-fg); }
+.chips button.on { color: var(--panel-fg); background: var(--chip-on); }
+.t-foot { display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px solid var(--panel-line); }
+.switch { display: inline-flex; padding: 2px; border-radius: 999px; background: var(--chip-on); }
+.switch button { width: 30px; height: 24px; border: 0; border-radius: 999px; background: transparent; color: var(--panel-mute); display: grid; place-items: center; cursor: pointer; transition: background .25s, color .25s; }
+.switch button svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.switch button.on { background: var(--accent); color: #fff; }
 
 /* telescope reticle + info bar */
 #scope { position: absolute; z-index: 12; left: 50%; top: 50%; width: 132px; height: 132px; margin: -66px 0 0 -66px; pointer-events: none; transition: opacity .25s, transform .3s cubic-bezier(.2,.8,.2,1); }
@@ -309,7 +346,8 @@ body[data-theme=light] .river-lbl { color: #1677c9; text-shadow: 0 0 3px #fff, 0
   .brand span, .hide-sm { display: none; }
   #mini { width: 120px; height: 120px; }
   .rb { width: 44px; height: 44px; }
-  .grid { grid-template-columns: auto repeat(4, 44px); }
+  .grid { grid-template-columns: auto repeat(4, 42px); }
+  .grid .rivers { display: none; }
   .grid-panel { padding: 10px; }
   .grid-note { display: none; }
   .card { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
@@ -332,9 +370,8 @@ body[data-theme=light] .river-lbl { color: #1677c9; text-shadow: 0 0 3px #fff, 0
   </div>
 
   <div class="grid-panel" id="grid-panel">
-    <span class="tag">Himalaya grid</span>
-    <div class="grid" id="grid"></div>
-    <div class="grid-note">Columns are river-cut sections, west to east. Rows are belts, north to south. Each dot is a viewpoint.</div>
+    <div class="gp-title"><span>The Himalaya</span><small>belts × river sections</small></div>
+    <div class="grid" id="grid" title="Columns are river-cut sections, west to east. Rows are belts, north to south."></div>
   </div>
 
   <div class="card" id="vp-card" hidden>
@@ -391,11 +428,19 @@ body[data-theme=light] .river-lbl { color: #1677c9; text-shadow: 0 0 3px #fff, 0
     <button class="rb" id="scope-btn" aria-label="Telescope" title="Telescope: what is in the crosshair?"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
   </div>
 
-  <div id="tune" class="off" role="dialog" aria-label="Sliders">
-    <div><div class="lab"><span>Visibility range</span><b id="vis-val">150 km</b></div><input type="range" id="vis" min="20" max="230" step="5" value="150" aria-label="Visibility range in kilometres"></div>
-    <div><div class="lab"><span>Theme</span></div><div class="seg" id="seg-theme"><button data-v="dark">Dark</button><button data-v="light">Light</button></div></div>
-    <div><div class="lab"><span>Peak names</span></div><div class="seg" id="seg-labels"><button data-v="quiz">Quiz</button><button data-v="all">All</button><button data-v="marked">Marked</button></div></div>
-    <div><div class="lab"><span>Height contours</span></div><div class="seg" id="seg-contours"><button data-v="on">On</button><button data-v="off">Off</button></div></div>
+  <div id="tune" class="off" role="dialog" aria-label="View settings">
+    <div class="t-row t-vis">
+      <div class="t-lab"><span>Visibility</span><b id="vis-val">150 km</b></div>
+      <input type="range" id="vis" min="20" max="230" step="5" value="150" aria-label="Visibility range in kilometres">
+    </div>
+    <div class="t-row"><span class="t-lab"><span>Names</span></span><div class="chips" id="seg-labels"><button data-v="quiz">Quiz</button><button data-v="all">All</button><button data-v="marked">Marked</button></div></div>
+    <div class="t-row"><span class="t-lab"><span>Contours</span></span><div class="chips" id="seg-contours"><button data-v="on">On</button><button data-v="off">Off</button></div></div>
+    <div class="t-foot"><span class="t-lab"><span>Theme</span></span>
+      <div class="switch" id="seg-theme">
+        <button data-v="dark" aria-label="Dark theme" title="Dark"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>
+        <button data-v="light" aria-label="Light theme" title="Light"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg></button>
+      </div>
+    </div>
   </div>
 
   <div id="vpbar" class="pill"><svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg><b id="pl-name"></b><small id="pl-elev"></small></div>
@@ -570,14 +615,14 @@ function renderStrip(m) {
           // ---- tone: base by distance, sun hillshade, snow, haze
           const fd = d / maxD, sf = Math.sqrt(fd);
           let r = near[0] + (far[0] - near[0]) * sf, g = near[1] + (far[1] - near[1]) * sf, b = near[2] + (far[2] - near[2]) * sf;
-          const e = d < 4500 ? 35 : d < 12000 ? 70 : d < 62000 ? 140 : 280;
+          const e = d < 4500 ? 70 : d < 12000 ? 140 : d < 62000 ? 280 : 560;
           const hE = elevAt(levels, lon + e / (K_DEG * cl), lat, d), hN = elevAt(levels, lon, lat + e / K_DEG, d);
           if (hE === hE && hN === hN) {
             const gx = (hE - h) / e, gy = (hN - h) / e, inv = 1 / Math.sqrt(gx * gx + gy * gy + 1);
             const sh = (-gx * LX - gy * LY + LZ) * inv - LZ;             // >0 faces the sun, <0 in shadow
             const amt = T.shade * (1 - fd * 0.55);
-            if (sh > 0) { const q = Math.min(1, sh * 2.4) * amt; r += (lit[0] - r) * q; g += (lit[1] - g) * q; b += (lit[2] - b) * q; }
-            else { const q = Math.min(1, -sh * 1.5) * amt; r += (shd[0] - r) * q; g += (shd[1] - g) * q; b += (shd[2] - b) * q; }
+            if (sh > 0) { const q = Math.min(1, sh * 2.1) * amt; r += (lit[0] - r) * q; g += (lit[1] - g) * q; b += (lit[2] - b) * q; }
+            else { const q = Math.min(1, -sh * 1.25) * amt; r += (shd[0] - r) * q; g += (shd[1] - g) * q; b += (shd[2] - b) * q; }
           }
           const sn = Math.max(0, Math.min(1, (h - 4900) / 1300)) * T.snowAmt * (1 - fd * 0.6);
           r += (snow[0] - r) * sn; g += (snow[1] - g) * sn; b += (snow[2] - b) * sn;
@@ -590,8 +635,8 @@ function renderStrip(m) {
           // ---- crest line where terrain reappears behind a ridge
           if (!prevVis && top < H) {
             const dip = angTop - minHid, drop = dip * lastD;
-            if (dip > 0.0006 && drop > 5) {
-              const a = (0.2 + drop / 110) * T.lineK * lineFade(lastD);
+            if (dip > 0.00045 && drop > 3) {
+              const a = (0.14 + drop / 140) * T.lineK * lineFade(lastD);
               blend(xi, top, a); blend(xi, top + 1, a * 0.28);
             }
           }
@@ -611,22 +656,31 @@ function renderStrip(m) {
       blend(xi, top, a); blend(xi, top + 1, a * 0.45); blend(xi, top - 1, a * 0.18);
     }
   }
-  // ---- contours: height of every terrain pixel from its depth, line where it crosses a 50 m level
+  // ---- contours: height of every terrain pixel from its depth. The interval doubles (50, 100, 200 … m)
+  // wherever lines would come closer than T.contMinPx pixels, so near slopes and far peaks get the same
+  // calm density; the newest level fades in, and each line is anti-aliased across the two pixels it falls between.
   if (m.contours) {
-    const C = 50, CR = 24000, hgt = new Float32Array(w * H), mark = new Float32Array(w * H);
+    const base = 50, minPx = T.contMinPx, hgt = new Float32Array(w * H), mark = new Float32Array(w * H);
     for (let y = 0; y < H; y++) {
       const tn = Math.tan(altTop - (y + 0.5) / ppr);
       for (let x = 0; x < w; x++) { const i = y * w + x, dd = dep[i]; hgt[i] = dd === Infinity ? NaN : eye + dd * tn + dd * dd * CURV; }
     }
     const test = (i, j) => {
       const d1 = dep[i], d2 = dep[j];
-      if (d1 === Infinity || d2 === Infinity || d1 > CR || Math.abs(d1 - d2) > Math.max(60, d1 * 0.04)) return;
-      const h1 = hgt[i], h2 = hgt[j], c1 = Math.floor(h1 / C), c2 = Math.floor(h2 / C);
-      if (c1 === c2) return;
-      const dens = Math.max(0, Math.min(1, C / Math.abs(h1 - h2) - 0.35));   // fade where contours crowd into one pixel
-      const major = Math.max(c1, c2) % 5 === 0;
-      const a = (major ? T.contMaj : T.cont) * dens * (1 - smooth(CR * 0.45, CR, d1));
-      if (a > mark[i]) mark[i] = a;
+      if (d1 === Infinity || d2 === Infinity || Math.abs(d1 - d2) > Math.max(60, d1 * 0.04)) return;
+      const h1 = hgt[i], h2 = hgt[j], dh = Math.abs(h1 - h2);
+      if (!(dh > 1e-3)) return;
+      let C = base; while (C < dh * minPx) C *= 2;
+      if (C > 3200) return;
+      const lo = Math.min(h1, h2), L = Math.ceil(lo / C) * C;
+      if (L > Math.max(h1, h2)) return;
+      let a = (L % 500 === 0 && C <= 100) ? T.contMaj : T.cont;
+      if (C > base && Math.round(L / C) % 2 !== 0) a *= Math.min(1, C / (dh * minPx) - 1);   // fade in the newest level
+      a *= 1 - 0.85 * smooth(maxD * 0.5, maxD, d1);
+      if (a <= 0.004) return;
+      const t = (L - h1) / (h2 - h1);                                                   // where the line falls between the pixels
+      if (a * (1 - t) > mark[i]) mark[i] = a * (1 - t);
+      if (a * t > mark[j]) mark[j] = a * t;
     };
     for (let y = 0; y < H - 1; y++) for (let x = 0; x < w; x++) { const i = y * w + x; test(i, i + w); if (x < w - 1) test(i, i + 1); }
     for (let i = 0; i < w * H; i++) if (mark[i] > 0) blend(i % w, (i / w) | 0, mark[i]);
@@ -937,12 +991,12 @@ let flyIdx = 0, eyeOff = 0, flying = null;
 const curEye = () => CUR.eye + eyeOff;
 
 const THEMES = {
-  dark: { skyTop: '#16171a', skyHor: '#2f3136', near: '#28292d', far: '#45484e', lit: '#868b94', shadow: '#0b0c0e', snow: '#a2a7af', snowAmt: .16,
-          line: '#ffffff', lineK: 1, shade: .78, haze: .78, cont: .17, contMaj: .34, bg: '#232427',
-          river: [150, 205, 255], glint: [245, 252, 255], ink: '235,238,242', accent: '#ff3b77' },
+  dark: { skyTop: '#16171a', skyHor: '#2f3136', near: '#2a2b2f', far: '#4a4d53', lit: '#8d929a', shadow: '#121315', snow: '#a2a7af', snowAmt: .16,
+          line: '#ffffff', lineK: 1, shade: .78, haze: .78, cont: .085, contMaj: .15, contMinPx: 8, bg: '#232427',
+          river: [120, 172, 222], glint: [225, 240, 255], ink: '235,238,242', accent: '#ff3b77' },
   light: { skyTop: '#ffffff', skyHor: '#dde0e4', near: '#efeeeb', far: '#d6d9dd', lit: '#ffffff', shadow: '#83888f', snow: '#ffffff', snowAmt: .22,
-          line: '#0d0e10', lineK: 1.5, shade: .9, haze: .5, cont: .3, contMaj: .52, bg: '#ffffff',
-          river: [16, 104, 186], glint: [255, 255, 255], ink: '21,23,26', accent: '#e0245e' },
+          line: '#0d0e10', lineK: 1.5, shade: .9, haze: .5, cont: .27, contMaj: .44, contMinPx: 4.5, bg: '#ffffff',
+          river: [38, 102, 168], glint: [255, 255, 255], ink: '21,23,26', accent: '#e0245e' },
 };
 const hexRGB = (c) => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
 function themeRGB(name) { const t = THEMES[name], o = {}; for (const k in t) o[k] = typeof t[k] === 'string' && t[k][0] === '#' ? hexRGB(t[k]) : t[k]; return o; }
@@ -1132,17 +1186,30 @@ function drawRivers(t) {
     for (let j = 1; j < n - 1; j++) fctx.quadraticCurveTo(rn.xs[j], rn.ys[j], (rn.xs[j] + rn.xs[j + 1]) / 2, (rn.ys[j] + rn.ys[j + 1]) / 2);
     fctx.lineTo(rn.xs[n - 1], rn.ys[n - 1]);
   };
+  // three passes: a soft wide halo that melts the river into its valley, a thin core, then quiet sparkles
+  const maxD = PREFS.vis * 1000;
   for (const rn of runs) {
     rn.big = Math.log10(rn.acc / T + 1); rn.dm = rn.d / rn.xs.length;
-    rn.w = Math.max(0.7, (0.75 + rn.big * 1.35) * Math.max(0.35, Math.min(1.6, 9000 / rn.dm)) * zoomK);
-    fctx.strokeStyle = `rgba(${r},${g},${b},${Math.min(0.92, 0.42 + rn.big * 0.26)})`; fctx.lineWidth = rn.w;
+    const near = Math.max(0.3, Math.min(1.4, 8000 / rn.dm));
+    rn.w = Math.max(0.55, (0.45 + rn.big * 0.95) * near * zoomK);
+    rn.fade = Math.max(0, 1 - Math.pow(rn.dm / maxD, 0.8)) * Math.min(1, 0.45 + rn.big * 0.35);   // aerial perspective
+  }
+  for (const rn of runs) {
+    if (rn.fade <= 0.02) continue;
+    fctx.strokeStyle = `rgba(${r},${g},${b},${0.13 * rn.fade})`; fctx.lineWidth = rn.w * 3.2 + 1.5;
+    path(rn); fctx.stroke();
+  }
+  for (const rn of runs) {
+    if (rn.fade <= 0.02) continue;
+    fctx.strokeStyle = `rgba(${r},${g},${b},${0.82 * rn.fade})`; fctx.lineWidth = rn.w;
     path(rn); fctx.stroke();
   }
   if (reduced) return;
-  fctx.setLineDash([2, 46]);
+  fctx.setLineDash([1.5, 64]);
   for (const rn of runs) {
-    fctx.lineDashOffset = -(t * 0.022 * Math.min(1.5, 0.6 + rn.big * 0.4)) % 48;
-    fctx.strokeStyle = `rgba(${gr},${gg},${gb},${Math.min(0.9, 0.35 + rn.big * 0.3)})`; fctx.lineWidth = rn.w + 0.6;
+    if (rn.fade <= 0.1 || rn.big < 0.25) continue;
+    fctx.lineDashOffset = -(t * 0.018 * Math.min(1.4, 0.6 + rn.big * 0.4)) % 65.5;
+    fctx.strokeStyle = `rgba(${gr},${gg},${gb},${0.55 * rn.fade})`; fctx.lineWidth = rn.w + 0.4;
     path(rn); fctx.stroke();
   }
   fctx.setLineDash([]);
@@ -1412,8 +1479,8 @@ function flyStep(dir) {
   const snap = document.createElement('canvas'); snap.width = pano.width; snap.height = pano.height; snap.getContext('2d').drawImage(pano, 0, 0);
   flyIdx = idx;
   const gid = genId + 1;                                   // the generation newGen() is about to start
-  const { W, H } = cssSize(), cssPpr = W / view.hfov, s = Math.min(0.42, 560 / W), ppr = cssPpr * s;
-  const nF = reduced ? 1 : 26, T = themeRGB(PREFS.theme);
+  const { W, H } = cssSize(), cssPpr = W / view.hfov, s = Math.min(1, 1400 / W), ppr = cssPpr * s;   // full resolution: no blur mid-climb
+  const nF = reduced ? 1 : 20, T = themeRGB(PREFS.theme);
   const x0 = Math.floor(wrap(view.heading - (W / 2) / cssPpr) * ppr);
   flying = { gen: gid, from, to, nF, frames: new Array(nF).fill(null), ready: 0, snap, s, x0, altTop: view.pitch + (H / 2) / cssPpr,
     tStart: performance.now(), playing: false, t0: 0, last: 0, pos: 0, endT: 0, dur: reduced ? 0 : 2400 + Math.abs(to - from) * 0.12 };
@@ -1430,7 +1497,7 @@ async function onFlyFrame(m) {
   f.frames[m.idx] = await createImageBitmap(new ImageData(new Uint8ClampedArray(m.img), m.w, m.H));
   (f.log || (f.log = [])).push(Math.round(performance.now() - f.tStart));
   while (f.ready < f.nF && f.frames[f.ready]) f.ready++;
-  if (!f.playing && f.ready >= Math.min(f.nF, 4)) { f.playing = true; f.last = performance.now(); needDraw = true; }
+  if (!f.playing && f.ready >= Math.min(f.nF, 3)) { f.playing = true; f.last = performance.now(); needDraw = true; }
 }
 // the film clock only runs while the next frame exists, so a slow frame pauses the climb instead of jumping it
 function stepFly(t) {
@@ -1612,8 +1679,9 @@ $('fly-up').onclick = () => flyStep(1);
 $('fly-down').onclick = () => flyStep(-1);
 
 // ---------- sliders popover ----------
-function closeTune() { tuneOn = false; $('tune').classList.add('off'); $('tune-btn').classList.remove('on'); }
-$('tune-btn').onclick = (e) => { e.stopPropagation(); tuneOn = !tuneOn; $('tune').classList.toggle('off', !tuneOn); $('tune-btn').classList.toggle('on', tuneOn); };
+function closeTune() { tuneOn = false; $('tune').classList.add('off'); $('tune-btn').classList.remove('on'); $('play').classList.remove('tuning'); }
+$('tune-btn').onclick = (e) => { e.stopPropagation(); tuneOn = !tuneOn; $('tune').classList.toggle('off', !tuneOn); $('tune-btn').classList.toggle('on', tuneOn); $('play').classList.toggle('tuning', tuneOn); };
+const visFill = () => $('vis').style.setProperty('--fill', (($('vis').value - 20) / 210 * 100).toFixed(1) + '%');
 function segInit(id, cur, onPick) {
   const el = $(id);
   const paint = (v) => el.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
@@ -1621,9 +1689,9 @@ function segInit(id, cur, onPick) {
   el.querySelectorAll('button').forEach(b => b.onclick = () => { paint(b.dataset.v); onPick(b.dataset.v); });
 }
 let visT = null;
-$('vis').value = PREFS.vis; $('vis-val').textContent = PREFS.vis + ' km';
+$('vis').value = PREFS.vis; $('vis-val').textContent = PREFS.vis + ' km'; visFill();
 $('vis').addEventListener('input', () => {
-  PREFS.vis = +$('vis').value; $('vis-val').textContent = PREFS.vis + ' km'; savePrefs();
+  PREFS.vis = +$('vis').value; $('vis-val').textContent = PREFS.vis + ' km'; visFill(); savePrefs();
   clearTimeout(visT); visT = setTimeout(() => { if (CUR && !flying) { newGen(); updateLabels(); } }, 160);
 });
 segInit('seg-theme', PREFS.theme, (v) => { PREFS.theme = v; savePrefs(); applyTheme(); if (CUR && !flying) newGen(); needDraw = true; });
@@ -1884,23 +1952,32 @@ requestAnimationFrame(tick);
 // =====================================================================================
 let map = null, selected = null;
 const vpMarkerEls = {};
+const MT_SVG = '<svg class="mt" viewBox="0 0 28 20" aria-hidden="true"><path class="body" d="M1.5 18.5 9.6 6.2l3.5 5L17.6 3l8.9 15.5Z"/><path class="snow" d="M15.5 6.6 17.6 3l2.1 3.7-1.1-.7-1 .9-1-.9Z"/></svg>';
 function buildGrid() {
   const g = $('grid'); g.innerHTML = '';
-  g.append(Object.assign(document.createElement('div'), { className: 'h' }));
-  SECTIONS.forEach((s, i) => { const h = document.createElement('div'); h.className = 'h'; h.textContent = s; h.title = SECTION_RIVERS[i]; g.append(h); });
+  const div = (cls, txt) => { const d = document.createElement('div'); d.className = cls; if (txt) d.textContent = txt; return d; };
+  g.append(div('h'));
+  SECTIONS.forEach((s, i) => { const h = div('h', s); h.title = SECTION_RIVERS[i]; g.append(h); });
   BELTS.forEach((b, r) => {
-    const rh = document.createElement('div'); rh.className = 'rh'; rh.textContent = b; g.append(rh);
+    g.append(div('rh', b));
     SECTIONS.forEach((s, c) => {
-      const cell = document.createElement('div'); cell.className = 'cell' + (r === 1 ? ' greater' : '');
-      VIEWPOINTS.filter(v => v.section === c && v.belt === r).forEach(v => {
+      const cell = div('cell' + (r === 1 ? ' greater' : '') + (c === SECTIONS.length - 1 ? ' last' : '') + (r === BELTS.length - 1 ? ' bottom' : ''));
+      const here = VIEWPOINTS.filter(v => v.section === c && v.belt === r);
+      here.forEach(v => {
         const pip = document.createElement('button'); pip.type = 'button'; pip.className = 'pip'; pip.title = v.name;
-        pip.setAttribute('aria-label', v.name); pip.dataset.id = v.id;
+        pip.setAttribute('aria-label', v.name); pip.dataset.id = v.id; pip.innerHTML = MT_SVG;
         pip.onclick = () => selectVp(v);
         cell.append(pip);
       });
+      if (!here.length) cell.append(div('dot'));
       g.append(cell);
     });
   });
+  // the rivers that cut the sections, at the column borders
+  g.append(div('rh'));
+  const rv = div('rivers');
+  ['Indus', 'Sutlej', 'Kali', 'Teesta', 'Dihang'].forEach((n, i) => { const sp = document.createElement('span'); sp.textContent = n; sp.style.left = (i * 25) + '%'; rv.append(sp); });
+  g.append(rv);
 }
 function vpComplete(v) {
   const s = SAVE.solved[v.id]; if (!s) return false;
@@ -1912,7 +1989,7 @@ function refreshHome() {
     const v = VIEWPOINTS.find(x => x.id === p.dataset.id);
     p.classList.toggle('done', vpComplete(v)); p.classList.toggle('sel', selected === v);
   });
-  for (const v of VIEWPOINTS) vpMarkerEls[v.id] && vpMarkerEls[v.id].classList.toggle('done', vpComplete(v));
+  for (const v of VIEWPOINTS) if (vpMarkerEls[v.id]) { vpMarkerEls[v.id].classList.toggle('done', vpComplete(v)); vpMarkerEls[v.id].classList.toggle('sel', selected === v); }
 }
 function selectVp(v) {
   selected = v;
@@ -1980,10 +2057,10 @@ function initMap() {
     maxBounds: [[66, 20], [102, 41]], attributionControl: { compact: true },
   });
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
-  map.on('load', applyMapTheme);
+  map.once('style.load', applyMapTheme); map.on('load', applyMapTheme);
   for (const v of VIEWPOINTS) {
     const el = document.createElement('div'); el.className = 'vp-marker';
-    el.innerHTML = '<div class="nm"></div><div class="dot"></div>'; el.querySelector('.nm').textContent = v.short;
+    el.innerHTML = '<div class="nm"></div>' + MT_SVG; el.querySelector('.nm').textContent = v.short;
     el.setAttribute('role', 'button'); el.tabIndex = 0; el.setAttribute('aria-label', v.name);
     el.addEventListener('click', (e) => { e.stopPropagation(); selectVp(v); });
     el.addEventListener('keydown', (e) => { if (e.key === 'Enter') selectVp(v); });

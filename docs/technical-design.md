@@ -55,14 +55,15 @@ The goal is PeakFinder's feel: a monochrome line drawing, and panning with no la
   - This replaces v1's rule (`d > lastD·1.1 + 250`), which drew nothing in the first 2–3 km and left a flat foreground wedge.
 - **Skyline:** the strongest line, fading only near the visibility limit.
 - **Sun hillshade:** each newly visible sample also reads the terrain gradient (2 extra height samples, spaced at the current level's resolution). Slopes facing a north-west sun 40° up get lighter; slopes facing away get darker. The effect fades with distance.
-- **Height contours (optional):** drawn in a per-pixel pass after the march. Each terrain pixel's height is rebuilt from its depth, as `eye + d·tan(alt) + d²·CURV`. A contour pixel is marked where its 50 m band differs from the pixel below or to the right on the same surface, with a bold line every 250 m, out to 24 km. Where contours would crowd into one pixel they fade out, so distant slopes stay clean.
+- **Height contours (optional, v2.2):** the interval is **adaptive**: it doubles (50, 100, 200 … m) wherever lines would come closer than `contMinPx` pixels (8 in dark, 4.5 in light). Near slopes and far peaks get the same calm density, and the newest level fades in. Each line is **anti-aliased** across the two pixels it falls between. Contours fade over the last half of the visibility range.
+- (v2.1 note) Contours are drawn in a per-pixel pass after the march. Each terrain pixel's height is rebuilt from its depth, as `eye + d·tan(alt) + d²·CURV`. A contour pixel is marked where its 50 m band differs from the pixel below or to the right on the same surface, with a bold line every 250 m, out to 24 km. Where contours would crowd into one pixel they fade out, so distant slopes stay clean.
 
 ### Themes
 `THEMES.dark` follows PeakFinder's dark theme and `THEMES.light` its light theme (white ground, ink lines). Colours go to the worker as RGB arrays. CSS custom properties on `body[data-theme]` theme the labels, the telescope and the home map (`applyMapTheme`).
 
 ### Fly-up (v2.1)
 - PeakFinder's "elevation offset". Steps are 0, +300, +800, +1,600, +3,000 and +5,000 m.
-- On a step, the current picture is frozen as frame 0. Workers then render **26 frames at about 0.4× resolution** at eased heights.
+- On a step, the current picture is frozen as frame 0. Workers then render **20 frames at full screen resolution** (capped at 1,400 columns) at eased heights. v2.1 used 26 frames at 0.4×, which looked like the screen blurring between steps.
   - The frames are queued before the full-quality strips and at top priority.
   - The film starts when 4 frames are ready, about 0.25 s.
 - The **film clock only advances while the next frame exists**, so a slow frame pauses the climb instead of jumping it.
@@ -107,7 +108,7 @@ The worker `los` command (run on worker 0, from the ground eye height) marches e
 
 ## Rivers traced from terrain
 
-(v2.1) Channel cells are chained into **downstream polylines**: walk from each channel head until meeting an already-walked river. Each line is smoothed twice with 1-2-1 weights and once with Chaikin, then drawn as quadratic curves. The glint is a dashed overlay whose offset travels downstream. The old output, one segment per D8 cell, made sharp zigzags.
+(v2.1) Channel cells are chained into **downstream polylines**: walk from each channel head until meeting an already-walked river. Each line is smoothed twice with 1-2-1 weights and once with Chaikin, then drawn as quadratic curves. Drawing (v2.2) takes three passes: a soft wide halo at 13 % that melts the river into its valley, a thin core, and sparse sparkles that travel downstream. All three fade with distance, like the terrain. The old output, one segment per D8 cell, made sharp zigzags.
 
 
 The worker `rivers` command runs on the z10 mosaic within 48 km:
