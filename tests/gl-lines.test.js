@@ -82,19 +82,19 @@ H.run('gl-lines: flow lines on the GPU', async (keep) => {
   await page.waitForFunction(() => window.__game.eyeOff === 0, null, { timeout: 180000 });
 
   // two density tiers: the fine tier adds lines when zoomed in, nothing at the default zoom
-  // mean brightness of the flanks under the summit (the caps are already full of base-tier lines; the fine tier fills the flanks)
-  const lit = async (c) => { const im = await H.pixels(page); let t = 0, n = 0;
-    for (let y = c.y + 10; y < c.y + 150; y += 3) for (let x = c.x - 90; x <= c.x + 90; x += 3) { if (x < 0 || y < 0 || x >= im.width || y >= im.height) continue; t += lum(im.px(x, y)); n++; }
-    return t / Math.max(1, n); };
+  // texture (mean pixel-to-pixel contrast) on the flanks under the summit: the fine tier adds detail there, not brightness
+  const lit = async (c) => { const im = await H.pixels(page); let g = 0, n = 0;
+    for (let y = c.y + 10; y < c.y + 150; y++) for (let x = c.x - 90; x <= c.x + 90; x++) { if (x < 0 || y < 0 || x + 1 >= im.width || y >= im.height) continue; g += Math.abs(lum(im.px(x + 1, y)) - lum(im.px(x, y))); n++; }
+    return g / Math.max(1, n); };
   const hf = await page.evaluate(() => window.__game.view.hfov);
   const { cap: c1 } = await capAndFlank(page, 'Dunagiri');
   await art(page, { fine: true }); const f1 = await lit(c1); await art(page, { fine: false }); const f0 = await lit(c1);
-  H.check(Math.abs(f1 - f0) < 0.5, `at 1× zoom the fine tier is hidden (${f1.toFixed(1)} vs ${f0.toFixed(1)})`);
+  H.check(Math.abs(f1 - f0) <= f0 * 0.01, `at 1× zoom the fine tier is hidden (texture ${f1.toFixed(2)} vs ${f0.toFixed(2)})`);
   await page.evaluate((hf) => { window.__game.setFov(hf / 2.2, true); window.__game.onViewChanged(); }, hf);
   await page.waitForTimeout(500);
   const { cap: cz } = await capAndFlank(page, 'Dunagiri');
   await art(page, { fine: true }); const z1 = await lit(cz); await art(page, { fine: false }); const z0 = await lit(cz);
-  H.check(z1 - z0 >= 1, `at 2.2× zoom the fine tier brightens the flanks (${z1.toFixed(1)} vs ${z0.toFixed(1)})`);
+  H.check(z1 >= z0 * 1.05, `at 2.2× zoom the fine tier adds texture to the flanks (${z1.toFixed(2)} vs ${z0.toFixed(2)})`);
   await art(page, { fine: true });
   H.check(await page.evaluate(() => window.__game.stats().lineDraws) <= 16, 'at most 16 sector draws a frame');
   H.check(errors.length === 0, 'no console errors' + (errors.length ? ': ' + errors.slice(0, 3).join(' | ') : ''));
