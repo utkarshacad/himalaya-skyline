@@ -1341,6 +1341,7 @@ async function buildLevels(vp, onProgress) {
     }
   }
   await Promise.all(Array.from({ length: 12 }, worker));
+  vp.tilesMissing = failed;                              // lines traced on holed terrain are not stored
   if (failed > jobs.length * 0.3) throw new Error('tiles');
   return specs.map(s => s.L);
 }
@@ -1466,14 +1467,87 @@ async function buildMesh(opts = {}) {
   stats.meshBuilds++; stats.meshPeakMB = peak / 1048576;
   return { cmd: 'mesh', cols, rows, pos, attr, index: meshIndex(cols, rows), rings: meshRings(rows, MESH_D0, MESH_MAXD) };
 }
-const stats = { meshBuilds: 0, newGen: 0, glFrames: 0 };
+const stats = { meshBuilds: 0, newGen: 0, glFrames: 0, flowTraces: 0 };
+// =====================================================================================
+//  Flow lines: traced once per viewpoint in the workers, sector by sector nearest the heading,
+//  and kept in IndexedDB (hs-v3 / flow, key viewpointId@FLOW_ALGO). Every storage failure is quiet.
+// =====================================================================================
+const FlowStore = (() => {
+  let dbp = null;
+  const open = () => dbp || (dbp = new Promise((res) => {
+    try {
+      const rq = indexedDB.open('hs-v3', 1);
+      rq.onupgradeneeded = () => { try { rq.result.createObjectStore('flow'); } catch (e) {} };
+      rq.onsuccess = () => res(rq.result); rq.onerror = () => res(null); rq.onblocked = () => res(null);
+    } catch (e) { res(null); }
+  }));
+  const tx = async (mode, fn) => {
+    const db = await open(); if (!db) return null;
+    return new Promise((res) => {
+      try { const t = db.transaction('flow', mode), rq = fn(t.objectStore('flow')); t.oncomplete = () => res(rq ? rq.result : true); t.onerror = t.onabort = () => res(null); }
+      catch (e) { res(null); }
+    });
+  };
+  const valid = (r) => r && Array.isArray(r.sectors) && r.sectors.length === FLOW_SECTORS &&
+    r.sectors.every(b => b instanceof ArrayBuffer && b.byteLength % FLOW_BYTES === 0);
+  return {
+    get: async (key) => { const r = await tx('readonly', (s) => s.get(key)); return valid(r) ? r : null; },
+    put: (key, rec) => tx('readwrite', (s) => s.put(rec, key)).then(() => {}),
+    keys: async () => (await tx('readonly', (s) => s.getAllKeys())) || [],
+    clear: () => tx('readwrite', (s) => s.clear()).then(() => {}),
+  };
+})();
+const Flow = (() => {
+  let epoch = 0, st = { done: 0, total: FLOW_SECTORS, fromCache: false, tracing: false };
+  const F = { onSector: null };
+  F.state = () => ({ ...st });
+  F.cancel = () => { epoch++; st = { done: 0, total: FLOW_SECTORS, fromCache: false, tracing: false }; };
+  F.start = async (cur, heading) => {
+    F.cancel();
+    const my = epoch, key = cur.def.id + '@' + FLOW_ALGO, sectors = new Array(FLOW_SECTORS);
+    st.tracing = true;
+    const deliver = (s, buf, fromCache) => {
+      if (my !== epoch) return;
+      sectors[s] = buf; st.done++;
+      F.onSector && F.onSector(s, buf, fromCache, key);
+    };
+    const hit = await FlowStore.get(key);
+    if (my !== epoch) return;
+    if (hit) { st.fromCache = true; hit.sectors.forEach((b, s) => deliver(s, b, true)); st.tracing = false; return; }
+    // sector 0 is centred on the opening view; even sectors first, then odd ones with their neighbours' edge cells,
+    // so two neighbours never trace at once. Within a wave, nearest the heading first.
+    const dist = (s) => Math.min(s, FLOW_SECTORS - s), edges = new Array(FLOW_SECTORS);
+    const wave = (list) => { const q = list.slice().sort((a, b) => dist(a) - dist(b));
+      return Promise.all(workers.map(async (w) => {
+        while (q.length && my === epoch) {
+          const s = q.shift(), nb = [edges[(s + FLOW_SECTORS - 1) % FLOW_SECTORS], edges[(s + 1) % FLOW_SECTORS]].filter(Boolean);
+          let occ = null; if (nb.length) { const n = nb.reduce((k, e) => k + e.length, 0); occ = new Int32Array(n); let o = 0; for (const e of nb) { occ.set(e, o); o += e.length; } }
+          stats.flowTraces = (stats.flowTraces || 0) + 1;
+          const r = await ask(w, { cmd: 'flow', sector: s, az0: heading, tiers: 2, occ }, occ ? [occ.buffer] : [], 120000);
+          if (my !== epoch) return;
+          edges[s] = new Int32Array(r.edge); deliver(s, r.verts, false);
+        }
+      })); };
+    try {
+      const all = Array.from({ length: FLOW_SECTORS }, (_, s) => s);
+      await wave(all.filter(s => s % 2 === 0)); if (my !== epoch) return;
+      await wave(all.filter(s => s % 2 === 1)); if (my !== epoch) return;
+      st.tracing = false;
+      if (!cur.tilesMissing) FlowStore.put(key, { sectors });
+    } catch (e) { if (my === epoch) { st.tracing = false; console.warn('flow lines: ' + e.message); } }
+  };
+  return F;
+})();
+const flowLog = [];
+Flow.onSector = (s, buf, fromCache, key) => { flowLog.push({ sector: s, verts: buf.byteLength / FLOW_BYTES, fromCache, key }); };
+
 async function startWorkers(levels, vpMsg) {
   stopWorkers();
   const n = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
   workers = Array.from({ length: n }, makeWorker);
   await Promise.all(workers.map(w => new Promise((res) => { w._ready = res; w.postMessage({ cmd: 'init', levels, vp: vpMsg }); })));
 }
-function stopWorkers() { for (const w of workers) w.terminate(); workers = []; dropGen(G); dropGen(Gprev); G = Gprev = null; }
+function stopWorkers() { Flow.cancel(); for (const w of workers) w.terminate(); workers = []; dropGen(G); dropGen(Gprev); G = Gprev = null; }
 
 // ---------- generations ----------
 function cssSize() { return { W: stage.clientWidth, H: stage.clientHeight }; }
@@ -2777,6 +2851,7 @@ function snapHigh(levels, lat, lon, radius) {
 
 async function enterViewpoint(def) {
   $('fail').hidden = true;
+  Flow.cancel(); GLPano.grid = null;
   try {
     const { vp, levels } = await prepareViewpoint(def);
     showLoader('Tracing rivers and sight lines', 1);
@@ -2805,6 +2880,7 @@ async function enterViewpoint(def) {
     CUR.startPitch = view.pitch;
     $('pl-name').textContent = def.name;
     buildLabelEls(); updateProgress(); updateFlyUI();
+    if (GLPano.ok) Flow.start(CUR, view.heading);
     hideLoader();
     return true;
   } catch (e) {
@@ -2833,7 +2909,7 @@ function resizeCanvases() {
 function goHome(selectNext) {
   closeGuess(); closeTune(); hideInfo();
   if (scopeOn) $('scope-btn').click();
-  flying = null; intro = null; GLPano.sweep = null;
+  flying = null; intro = null; GLPano.sweep = null; Flow.cancel(); GLPano.grid = null;
   const home = $('home'), play = $('play'), back = map && CUR && !reduced;
   if (back) {
     // put the map exactly where the panorama is looking, grey, then let the panorama dissolve into it
@@ -3110,6 +3186,7 @@ window.__game = { VIEWPOINTS, get CUR() { return CUR; }, view, selectVp, enterVi
     return alts.map(a => (a === -Infinity ? null : H / 2 - (a - view.pitch) * p));
   },
   stats: () => ({ ...stats }),
+  Flow, FlowStore, flowLog,
   FLOW: { PPR: FLOW_PPR, D0: FLOW_D0, SECTORS: FLOW_SECTORS, ALGO: FLOW_ALGO },
   traceForTest: (o = {}) => ask(workers[0], { cmd: 'flow', sector: 0, az0: view.heading, tiers: o.tiers || 2, budget: o.budget, occ: null }, [], 240000),
   askBrokenWorker: () => { const w = wireWorker(new Worker(URL.createObjectURL(new Blob(['onmessage = () => { throw new Error("boom"); };'], { type: 'text/javascript' }))));

@@ -25,7 +25,7 @@ function serve() {
 
 const LAUNCH_ARGS = ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl'];
 
-// open({ theme, viewport, noWebGL2, noMap, dpr, browser, context, blockTiles })
+// open({ theme, viewport, noWebGL2, noMap, dpr, browser, context, blockTiles, init })  init: a function run before the page's scripts
 // noMap: MapLibre fails to load, so only the panorama's own tile fetches show up in `requests` → { page, browser, context, errors, requests }
 async function open(opts = {}) {
   const url = await serve();
@@ -50,6 +50,7 @@ async function open(opts = {}) {
       HTMLCanvasElement.prototype.getContext = function (type, ...rest) { return type === 'webgl2' ? null : orig.call(this, type, ...rest); };
     }
   }, { theme: opts.theme, noWebGL2: !!opts.noWebGL2 });
+  if (opts.init) await page.addInitScript(opts.init);
   await page.goto(url + 'index.html');
   await page.waitForFunction(() => !!window.__game);
   return { page, browser, context, errors, requests };
