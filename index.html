@@ -1,0 +1,1401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Himalaya Skyline</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: full-screen stage. Home = 2D/3D map with viewpoints; play = PeakFinder-style panorama with thin chrome. */
+:root {
+  --sky-top: #050a14;
+  --sky-hor: #24456b;
+  --ink: #0b111b;
+  --chrome: rgba(16, 22, 32, 0.78);
+  --chrome-line: rgba(255, 255, 255, 0.12);
+  --text: #f2f6fb;
+  --muted: #9aa8bb;
+  --accent: #f5a623;     /* selected peak / CTA, PeakFinder orange */
+  --river: #6ec3ff;
+  --good: #7fd18b;
+  --bad: #ff7a6b;
+  --f-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --f-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; margin: 0; }
+[hidden] { display: none !important; }
+body { background: var(--ink); color: var(--text); font-family: var(--f-ui); overflow: hidden; -webkit-font-smoothing: antialiased; }
+button { font-family: inherit; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.view { position: absolute; inset: 0; transition: opacity .7s ease; }
+.view.fade { opacity: 0; pointer-events: none; }
+#map { position: absolute; inset: 0; background: #1b2430; }
+
+/* ---------- Chrome shared ---------- */
+.bar {
+  position: absolute; z-index: 20; left: 0; right: 0; top: 0;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) max(14px, env(safe-area-inset-right, 0px)) 10px max(14px, env(safe-area-inset-left, 0px));
+  display: flex; align-items: center; gap: 10px;
+  background: linear-gradient(180deg, rgba(5,10,20,.85), rgba(5,10,20,0));
+  pointer-events: none;
+}
+.bar > * { pointer-events: auto; }
+.brand { font-weight: 600; letter-spacing: .02em; font-size: 15px; white-space: nowrap; }
+.brand span { color: var(--muted); font-weight: 400; }
+.spacer { flex: 1; }
+.chip {
+  display: inline-flex; align-items: center; gap: 8px; min-width: 0;
+  background: var(--chrome); border: 1px solid var(--chrome-line); border-radius: 999px;
+  padding: 6px 12px; font-size: 13px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.chip b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip small { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.btn {
+  border: 1px solid var(--chrome-line); background: var(--chrome); color: var(--text);
+  border-radius: 999px; padding: 7px 13px; font-size: 13px; cursor: pointer;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); white-space: nowrap;
+}
+.btn:hover { background: rgba(40, 50, 66, .9); }
+.btn.primary { background: var(--accent); border-color: transparent; color: #1a1206; font-weight: 600; }
+.btn.icon { width: 36px; height: 36px; padding: 0; display: grid; place-items: center; font-size: 18px; line-height: 1; }
+
+/* ---------- Map home ---------- */
+.vp-marker { display: grid; justify-items: center; gap: 4px; cursor: pointer; }
+.vp-marker .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff; box-shadow: 0 0 0 4px rgba(245,166,35,.25); }
+.vp-marker.done .dot { background: var(--good); box-shadow: 0 0 0 4px rgba(127,209,139,.25); }
+.vp-marker .nm { font-size: 12px; font-weight: 600; text-shadow: 0 1px 3px #000, 0 0 10px rgba(0,0,0,.8); white-space: nowrap; }
+.river-lbl { font: italic 500 12px/1 var(--f-ui); color: var(--river); text-shadow: 0 1px 3px #000; white-space: nowrap; pointer-events: none; letter-spacing: .03em; }
+
+.card {
+  position: absolute; z-index: 25;
+  right: max(14px, env(safe-area-inset-right, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  width: min(340px, calc(100vw - 28px));
+  background: var(--chrome); border: 1px solid var(--chrome-line); border-radius: 14px;
+  padding: 16px; display: grid; gap: 10px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.card h2 { margin: 0; font-size: 20px; font-weight: 600; text-wrap: balance; }
+.card .meta { font: 12px/1.4 var(--f-mono); color: var(--muted); }
+.card p { margin: 0; font-size: 14px; line-height: 1.5; color: #d5dde8; }
+.card .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.tag { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+
+.grid-panel {
+  position: absolute; z-index: 24;
+  left: max(14px, env(safe-area-inset-left, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  background: var(--chrome); border: 1px solid var(--chrome-line); border-radius: 14px;
+  padding: 12px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.grid-panel .tag { display: block; margin-bottom: 8px; }
+.grid { display: grid; grid-template-columns: auto repeat(4, 54px); gap: 3px; font-size: 11px; }
+.grid .h { color: var(--muted); text-align: center; padding-bottom: 2px; }
+.grid .rh { color: var(--muted); padding-right: 6px; display: flex; align-items: center; white-space: nowrap; }
+.grid .cell { height: 26px; border-radius: 5px; background: rgba(255,255,255,.05); display: flex; align-items: center; justify-content: center; gap: 4px; }
+.grid .cell.greater { background: rgba(255,255,255,.1); }
+.grid .pip { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--accent); cursor: pointer; padding: 0; background: transparent; }
+.grid .pip.done { background: var(--good); border-color: var(--good); }
+.grid .pip.sel { box-shadow: 0 0 0 3px rgba(255,255,255,.35); }
+.grid-note { font-size: 11px; color: var(--muted); margin-top: 8px; max-width: 290px; line-height: 1.4; }
+
+/* ---------- Panorama ---------- */
+#pano, #fx { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#fx { pointer-events: none; }
+#stage { position: absolute; inset: 0; touch-action: none; cursor: grab; }
+#stage.dragging { cursor: grabbing; }
+#labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+
+.pk { position: absolute; left: 0; top: 0; pointer-events: none; will-change: transform; }
+.pk .stem { position: absolute; left: 0; bottom: 0; width: 1px; background: rgba(242,246,251,.85); transform-origin: bottom; }
+.pk .txt {
+  position: absolute; left: 2px; bottom: 0; transform-origin: 0 100%; transform: rotate(-45deg);
+  white-space: nowrap; font-size: 13px; color: var(--text); text-shadow: 0 1px 2px #000, 0 0 6px rgba(0,0,0,.7);
+}
+.pk .txt small { color: var(--muted); font-size: 11px; margin-left: 5px; }
+.pk.solved .stem { background: var(--accent); }
+.pk.solved .txt { color: #ffd38a; }
+.pk.minor .txt { font-size: 11px; color: #c4cfdd; }
+.pk.minor .stem { background: rgba(242,246,251,.45); }
+
+.q {
+  position: absolute; left: 0; top: 0; pointer-events: auto; cursor: pointer;
+  width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%;
+  border: 1.5px solid #fff; background: rgba(8,12,20,.6); color: #fff;
+  display: grid; place-items: center; font: 600 15px/1 var(--f-ui);
+  box-shadow: 0 0 0 0 rgba(245,166,35,.6); animation: pulse 2.4s infinite;
+}
+.q:hover, .q.active { background: var(--accent); color: #1a1206; border-color: var(--accent); }
+.q-stem { position: absolute; width: 1px; background: rgba(255,255,255,.7); pointer-events: none; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(245,166,35,.55); } 70% { box-shadow: 0 0 0 12px rgba(245,166,35,0); } 100% { box-shadow: 0 0 0 0 rgba(245,166,35,0); } }
+
+.river-tag { position: absolute; left: 0; top: 0; font: italic 12px/1 var(--f-ui); color: var(--river); text-shadow: 0 1px 3px #000; white-space: nowrap; pointer-events: none; }
+
+#mini {
+  position: absolute; z-index: 15; left: max(14px, env(safe-area-inset-left, 0px)); top: calc(62px + env(safe-area-inset-top, 0px));
+  width: 150px; height: 150px; border-radius: 12px; border: 1px solid var(--chrome-line); background: rgba(8, 12, 20, .75);
+}
+#compass {
+  position: absolute; z-index: 15; left: 0; right: 0; bottom: 0; height: calc(40px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(0deg, rgba(5,10,20,.9), rgba(5,10,20,.0)); pointer-events: none;
+}
+#compass canvas { width: 100%; height: 40px; display: block; }
+.zoom { position: absolute; z-index: 16; right: max(14px, env(safe-area-inset-right, 0px)); bottom: calc(52px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 6px; }
+
+#guess {
+  position: absolute; z-index: 30; width: min(320px, calc(100vw - 28px));
+  background: var(--chrome); border: 1px solid var(--chrome-line); border-radius: 14px; padding: 12px;
+  display: grid; gap: 8px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 12px 40px rgba(0,0,0,.5);
+}
+#guess .top { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); }
+#guess input {
+  width: 100%; box-sizing: border-box; border-radius: 10px; border: 1px solid var(--chrome-line);
+  background: rgba(0,0,0,.35); color: var(--text); font: 16px var(--f-ui); padding: 10px 12px;
+}
+#guess .msg { font-size: 13px; min-height: 18px; color: var(--muted); }
+#guess .msg.bad { color: var(--bad); } #guess .msg.good { color: var(--good); }
+#guess.shake { animation: shake .35s; }
+@keyframes shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+.ac { display: grid; gap: 2px; max-height: 180px; overflow: auto; }
+.ac button { text-align: left; border: 0; background: transparent; color: var(--text); padding: 7px 8px; border-radius: 8px; font-size: 14px; cursor: pointer; }
+.ac button.on, .ac button:hover { background: rgba(255,255,255,.1); }
+.ac button small { color: var(--muted); margin-left: 6px; }
+
+#fact {
+  position: absolute; z-index: 18; left: 50%; transform: translateX(-50%);
+  bottom: calc(54px + env(safe-area-inset-bottom, 0px)); width: min(460px, calc(100vw - 28px)); box-sizing: border-box;
+  background: var(--chrome); border: 1px solid var(--chrome-line); border-radius: 12px; padding: 10px 14px;
+  font-size: 13.5px; line-height: 1.45; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+#fact b { color: #ffd38a; }
+#fact .meta { font: 12px var(--f-mono); color: var(--muted); }
+
+#done { left: 50%; right: auto; transform: translateX(-50%); bottom: auto; top: 50%; translate: 0 -50%; text-align: center; justify-items: center; }
+#done .big { font: 600 34px/1 var(--f-ui); color: #ffd38a; }
+
+#loader {
+  position: absolute; z-index: 40; left: 50%; bottom: calc(70px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: var(--chrome); border: 1px solid var(--chrome-line); border-radius: 999px; padding: 8px 16px;
+  font-size: 13px; display: flex; align-items: center; gap: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+#loader .track { width: 120px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.12); overflow: hidden; }
+#loader .fill { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+
+.fail { position: absolute; inset: 0; margin: auto; height: fit-content; z-index: 50; width: min(420px, calc(100vw - 32px)); }
+
+@media (max-width: 640px) {
+  .brand span, .hide-sm { display: none; }
+  #mini { width: 110px; height: 110px; }
+  .grid { grid-template-columns: auto repeat(4, 44px); }
+  .grid-panel { padding: 10px; }
+  .grid-note { display: none; }
+  .card { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+  .has-card .grid-panel { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .q { animation: none; } .view { transition: none; } }
+</style>
+</head>
+<body>
+
+<!-- ============ HOME: map ============ -->
+<section id="home" class="view">
+  <div id="map" aria-label="Map of the Himalaya with viewpoints"></div>
+  <div class="bar">
+    <div class="brand">Himalaya Skyline <span>· name the peaks from the places people stand</span></div>
+    <div class="spacer"></div>
+    <div class="chip"><small>Score</small> <b id="home-score">0</b></div>
+  </div>
+
+  <div class="grid-panel" id="grid-panel">
+    <span class="tag">Himalaya grid</span>
+    <div class="grid" id="grid"></div>
+    <div class="grid-note">Columns are river-cut sections, west to east. Rows are belts, north to south. Each dot is a viewpoint.</div>
+  </div>
+
+  <div class="card" id="vp-card" hidden>
+    <span class="tag" id="vp-tag"></span>
+    <h2 id="vp-name"></h2>
+    <div class="meta" id="vp-meta"></div>
+    <p id="vp-blurb"></p>
+    <div class="row">
+      <button class="btn primary" id="vp-go">Fly in</button>
+      <button class="btn" id="vp-close">Close</button>
+      <span class="meta" id="vp-progress"></span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PLAY: panorama ============ -->
+<section id="play" class="view fade" aria-label="Panorama">
+  <canvas id="pano"></canvas>
+  <canvas id="fx"></canvas>
+  <div id="stage"><div id="labels"></div></div>
+  <canvas id="mini" aria-label="Mini map"></canvas>
+  <div id="compass"><canvas id="compass-c"></canvas></div>
+
+  <div class="bar">
+    <button class="btn" id="to-map">‹ Map</button>
+    <div class="chip"><b id="pl-name"></b><small class="hide-sm" id="pl-cell"></small></div>
+    <div class="spacer"></div>
+    <div class="chip"><small>Peaks</small> <b id="pl-progress">0/0</b></div>
+    <button class="btn hide-sm" id="names-toggle">Show all names</button>
+  </div>
+
+  <div class="zoom">
+    <button class="btn icon" id="z-in" aria-label="Zoom in">+</button>
+    <button class="btn icon" id="z-out" aria-label="Zoom out">−</button>
+  </div>
+
+  <div id="fact" hidden></div>
+
+  <div id="guess" hidden role="dialog" aria-label="Name this peak">
+    <div class="top"><span id="g-title">Which peak is this?</span><button class="btn" id="g-close" style="padding:3px 9px">✕</button></div>
+    <input id="g-input" autocomplete="off" spellcheck="false" placeholder="Type a peak name">
+    <div class="ac" id="g-ac"></div>
+    <div class="msg" id="g-msg"></div>
+    <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" id="g-hint">Hint</button>
+      <button class="btn" id="g-reveal">Show me</button>
+    </div>
+  </div>
+
+  <div class="card" id="done" hidden>
+    <span class="tag">Skyline complete</span>
+    <div class="big" id="done-score"></div>
+    <p id="done-text"></p>
+    <div class="row" style="justify-content:center">
+      <button class="btn primary" id="done-next">Next viewpoint</button>
+      <button class="btn" id="done-stay">Keep looking</button>
+    </div>
+  </div>
+</section>
+
+<div id="loader" hidden><span id="ld-text">Streaming terrain</span><div class="track"><div class="fill" id="ld-fill"></div></div></div>
+<div class="card fail" id="fail" hidden>
+  <span class="tag">Can't load the mountains</span>
+  <h2 id="fail-title">Terrain data didn't arrive</h2>
+  <p id="fail-body">Open this file in Chrome or Edge with an internet connection. The elevation data streams from a public server; preview panes block it.</p>
+</div>
+
+<!-- Code shared by the page and the render worker -->
+<script id="shared-src" type="text/plain">
+var R_EARTH = 6371000, K_DEG = 111320, REFR = 0.13, CURV = (1 - REFR) / (2 * R_EARTH);
+var LUT = null, LUT_LAT0 = 0, LUT_STEP = 0.0005, LUT_N = 0;
+function mercN(lat) { const p = lat * Math.PI / 180; return Math.log(Math.tan(Math.PI / 4 + p / 2)); }
+function buildLUT(lat0) {
+  LUT_LAT0 = lat0 - 4; LUT_N = Math.ceil(8 / LUT_STEP) + 2; LUT = new Float64Array(LUT_N);
+  for (let i = 0; i < LUT_N; i++) LUT[i] = mercN(LUT_LAT0 + i * LUT_STEP);
+}
+function mercFast(lat) {
+  const f = (lat - LUT_LAT0) / LUT_STEP, i = f | 0;
+  if (!LUT || i < 0 || i >= LUT_N - 1) return mercN(lat);
+  const t = f - i; return LUT[i] * (1 - t) + LUT[i + 1] * t;
+}
+function sampleLevel(L, lon, lat) {
+  const gx = (lon + 180) / 360 * L.W - L.x0;
+  const gy = (1 - mercFast(lat) / Math.PI) / 2 * L.W - L.y0;
+  if (gx < 0 || gy < 0 || gx >= L.w - 1 || gy >= L.h - 1) return NaN;
+  const ix = gx | 0, iy = gy | 0, fx = gx - ix, fy = gy - iy, i = iy * L.w + ix, d = L.data, w = L.w;
+  return (d[i] * (1 - fx) + d[i + 1] * fx) * (1 - fy) + (d[i + w] * (1 - fx) + d[i + w + 1] * fx) * fy;
+}
+function elevAt(levels, lon, lat, dist) {
+  for (let k = 0; k < levels.length; k++) {
+    const L = levels[k];
+    if (dist <= L.maxD) { const v = sampleLevel(L, lon, lat); if (v === v) return v; }
+  }
+  const last = levels[levels.length - 1]; const v = sampleLevel(last, lon, lat);
+  return v === v ? v : NaN;
+}
+function geoFrom(lat0, lon0, az, d) {
+  const lat = lat0 + d * Math.cos(az) / K_DEG;
+  const lon = lon0 + d * Math.sin(az) / (K_DEG * Math.cos(lat * Math.PI / 180));
+  return [lat, lon];
+}
+function azDist(lat0, lon0, lat, lon) {
+  const dy = (lat - lat0) * K_DEG, dx = (lon - lon0) * K_DEG * Math.cos(lat * Math.PI / 180);
+  let az = Math.atan2(dx, dy); if (az < 0) az += Math.PI * 2;
+  return [az, Math.hypot(dx, dy)];
+}
+function lineOfSight(levels, vp, az, dTarget, hTarget) {
+  // true if nothing between viewer and target rises above the sight line
+  const angT = Math.atan2(hTarget - dTarget * dTarget * CURV - vp.eye, dTarget);
+  let d = 60;
+  while (d < dTarget * 0.985 - 150) {
+    const [la, lo] = geoFrom(vp.lat, vp.lon, az, d);
+    const h = elevAt(levels, lo, la, d);
+    if (h === h && Math.atan2(h - d * d * CURV - vp.eye, d) > angT + 0.0006) return false;
+    d += Math.max(20, d * 0.004);
+  }
+  return true;
+}
+</script>
+
+<!-- Render worker: ray-marches the elevation model into a PeakFinder-style line panorama -->
+<script id="worker-src" type="text/plain">
+let levels = null, vp = null, pending = null, busy = false;
+onmessage = (e) => {
+  const m = e.data;
+  if (m.cmd === 'init') { levels = m.levels; vp = m.vp; buildLUT(vp.lat); postMessage({ cmd: 'ready' }); return; }
+  if (m.cmd === 'render') { pending = m; if (!busy) loop(); return; }
+  if (m.cmd === 'rivers') { postMessage(traceRivers(m), []); return; }
+  if (m.cmd === 'los') {
+    const out = m.items.map(it => lineOfSight(levels, vp, it.az, it.d, it.h));
+    postMessage({ cmd: 'los', vis: out }); return;
+  }
+};
+function loop() {
+  busy = true;
+  while (pending) { const m = pending; pending = null; render(m); }
+  busy = false;
+}
+function hex(c) { return [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)]; }
+const SKY_TOP = hex('#050a14'), SKY_HOR = hex('#24456b'), SKY_GLOW = hex('#3d6a96');
+const NEAR = hex('#0e1622'), FAR = hex('#3b5575'), SNOW = hex('#9db3cc'), LINE = hex('#f2f6fb');
+
+function render(m) {
+  const { W, H, heading, pitch, ppr, id, quality } = m;
+  const img = new Uint8ClampedArray(W * H * 4);
+  const depth = new Float32Array(W * H);
+  const cx = W / 2, cy = H / 2, eye = vp.eye, maxD = vp.maxD, lat0 = vp.lat, lon0 = vp.lon;
+  const k = quality > 0.75 ? 0.0042 : 0.009, minStep = quality > 0.75 ? 10 : 25;
+  // sky colour per row
+  const sky = new Uint8ClampedArray(H * 3);
+  for (let y = 0; y < H; y++) {
+    const alt = pitch + (cy - y) / ppr;
+    const t = Math.max(0, Math.min(1, alt / 0.6));
+    const g = Math.max(0, 1 - Math.abs(alt) / 0.05);
+    for (let c = 0; c < 3; c++) sky[y * 3 + c] = SKY_HOR[c] + (SKY_TOP[c] - SKY_HOR[c]) * Math.pow(t, 0.6) + (SKY_GLOW[c] - SKY_HOR[c]) * g * 0.6;
+  }
+  const lineAlpha = (d) => 1 - 0.6 * Math.min(1, Math.sqrt(d / maxD));
+  function blendLine(x, y, a) {
+    if (y < 0 || y >= H) return;
+    const p = (y * W + x) * 4;
+    img[p] += (LINE[0] - img[p]) * a; img[p + 1] += (LINE[1] - img[p + 1]) * a; img[p + 2] += (LINE[2] - img[p + 2]) * a;
+  }
+  for (let x = 0; x < W; x++) {
+    const az = heading + (x + 0.5 - cx) / ppr, s = Math.sin(az), c = Math.cos(az);
+    let top = H, lastD = 0, d = 15, prevH = NaN, step = minStep;
+    while (d < maxD) {
+      const lat = lat0 + d * c / K_DEG;
+      const lon = lon0 + d * s / (K_DEG * Math.cos(lat * 0.017453292519943295));
+      const h = elevAt(levels, lon, lat, d);
+      if (h === h) {
+        const ang = Math.atan2(h - d * d * CURV - eye, d);
+        let yi = Math.ceil(cy - (ang - pitch) * ppr);
+        if (yi < top) {
+          if (yi < 0) yi = 0;
+          const jump = top < H && d > lastD * 1.1 + 250;
+          // colour: distance haze + slope light + a touch of snow
+          const t = Math.pow(Math.min(1, d / maxD), 0.5);
+          const slope = prevH === prevH ? Math.max(-1.2, Math.min(1.2, (h - prevH) / step)) : 0;
+          const light = 1 + slope * 0.16;
+          const sn = Math.max(0, Math.min(1, (h - 4800) / 1400)) * 0.35 * (1 - t * 0.5);
+          let r = (NEAR[0] + (FAR[0] - NEAR[0]) * t), g = (NEAR[1] + (FAR[1] - NEAR[1]) * t), b = (NEAR[2] + (FAR[2] - NEAR[2]) * t);
+          r = (r + (SNOW[0] - r) * sn) * light; g = (g + (SNOW[1] - g) * sn) * light; b = (b + (SNOW[2] - b) * sn) * light;
+          for (let y = yi; y < top; y++) {
+            const p = (y * W + x) * 4; img[p] = r; img[p + 1] = g; img[p + 2] = b; img[p + 3] = 255; depth[y * W + x] = d;
+          }
+          if (jump) { const a = lineAlpha(lastD); blendLine(x, top, a); blendLine(x, top + 1, a * 0.35); }
+          top = yi; lastD = d;
+          if (top <= 0) break;
+        }
+        prevH = h;
+      }
+      step = Math.max(minStep, d * k); d += step;
+    }
+    for (let y = 0; y < top; y++) {
+      const p = (y * W + x) * 4; img[p] = sky[y * 3]; img[p + 1] = sky[y * 3 + 1]; img[p + 2] = sky[y * 3 + 2]; img[p + 3] = 255; depth[y * W + x] = Infinity;
+    }
+    if (top > 0 && top < H) { blendLine(x, top, 0.95); blendLine(x, top - 1, 0.25); blendLine(x, top + 1, 0.4); }
+  }
+  postMessage({ cmd: 'frame', id, W, H, heading, pitch, ppr, img: img.buffer, depth: depth.buffer }, [img.buffer, depth.buffer]);
+}
+
+// ---- Rivers from the terrain: priority-flood + flow accumulation on the z10 mosaic ----
+function traceRivers(m) {
+  const L = levels[m.level], radius = m.radius, T = m.threshold;
+  const gcx = (vp.lon + 180) / 360 * L.W - L.x0, gcy = (1 - mercN(vp.lat) / Math.PI) / 2 * L.W - L.y0;
+  const mpp = 40075016.7 * Math.cos(vp.lat * Math.PI / 180) / L.W;
+  const rpx = radius / mpp;
+  const x0 = Math.max(1, Math.floor(gcx - rpx)), x1 = Math.min(L.w - 2, Math.ceil(gcx + rpx));
+  const y0 = Math.max(1, Math.floor(gcy - rpx)), y1 = Math.min(L.h - 2, Math.ceil(gcy + rpx));
+  const w = x1 - x0 + 1, h = y1 - y0 + 1, n = w * h;
+  const e = new Float32Array(n);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) e[y * w + x] = L.data[(y + y0) * L.w + (x + x0)];
+  const filled = new Float32Array(n), parent = new Int32Array(n).fill(-1), closed = new Uint8Array(n), order = new Int32Array(n);
+  // binary heap
+  const hi = new Int32Array(n), hk = new Float32Array(n); let hn = 0, on = 0;
+  function push(i, key) {
+    let j = hn++; hi[j] = i; hk[j] = key;
+    while (j > 0) { const p = (j - 1) >> 1; if (hk[p] <= hk[j]) break; [hi[p], hi[j]] = [hi[j], hi[p]]; [hk[p], hk[j]] = [hk[j], hk[p]]; j = p; }
+  }
+  function pop() {
+    const top = hi[0]; hn--;
+    if (hn > 0) {
+      hi[0] = hi[hn]; hk[0] = hk[hn]; let j = 0;
+      for (;;) { const l = 2 * j + 1, r = l + 1; let s = j;
+        if (l < hn && hk[l] < hk[s]) s = l; if (r < hn && hk[r] < hk[s]) s = r;
+        if (s === j) break; [hi[s], hi[j]] = [hi[j], hi[s]]; [hk[s], hk[j]] = [hk[j], hk[s]]; j = s; }
+    }
+    return top;
+  }
+  for (let x = 0; x < w; x++) for (const y of [0, h - 1]) { const i = y * w + x; if (!closed[i]) { closed[i] = 1; filled[i] = e[i]; push(i, e[i]); } }
+  for (let y = 0; y < h; y++) for (const x of [0, w - 1]) { const i = y * w + x; if (!closed[i]) { closed[i] = 1; filled[i] = e[i]; push(i, e[i]); } }
+  const DX = [-1, 0, 1, -1, 1, -1, 0, 1], DY = [-1, -1, -1, 0, 0, 1, 1, 1];
+  while (hn > 0) {
+    const c = pop(); order[on++] = c;
+    const cx = c % w, cy = (c / w) | 0;
+    for (let k = 0; k < 8; k++) {
+      const nx = cx + DX[k], ny = cy + DY[k];
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const nb = ny * w + nx; if (closed[nb]) continue;
+      closed[nb] = 1; parent[nb] = c;
+      filled[nb] = Math.max(e[nb], filled[c] + 0.01);
+      push(nb, filled[nb]);
+    }
+  }
+  const acc = new Float32Array(n).fill(1);
+  for (let k = on - 1; k >= 0; k--) { const c = order[k], p = parent[c]; if (p >= 0) acc[p] += acc[c]; }
+  const out = [];
+  const toLon = (gx) => gx / L.W * 360 - 180;
+  const toLat = (gy) => Math.atan(Math.sinh(Math.PI * (1 - 2 * gy / L.W))) * 180 / Math.PI;
+  for (let i = 0; i < n; i++) {
+    if (acc[i] < T) continue;
+    const p = parent[i]; if (p < 0) continue;
+    const ax = i % w + x0 + L.x0 + 0.5, ay = ((i / w) | 0) + y0 + L.y0 + 0.5;
+    const bx = p % w + x0 + L.x0 + 0.5, by = ((p / w) | 0) + y0 + L.y0 + 0.5;
+    const la = toLat(ay), lo = toLon(ax);
+    const [, dd] = azDist(vp.lat, vp.lon, la, lo); if (dd > radius) continue;
+    out.push(lo, la, e[i], toLon(bx), toLat(by), e[p], acc[i]);
+  }
+  const arr = new Float32Array(out);
+  return { cmd: 'rivers', segs: arr.buffer, cellKm2: (mpp * mpp) / 1e6 };
+}
+</script>
+
+<script>
+// =====================================================================================
+//  Data
+// =====================================================================================
+// Peak positions are approximate and get snapped to the highest terrain cell nearby.
+const VIEWPOINTS = [
+  { id: 'gulmarg', name: 'Apharwat, Gulmarg', short: 'Gulmarg', lat: 34.0105, lon: 74.3360, snap: 300, eyeAdd: 2,
+    section: 0, belt: 2, cellName: 'Punjab Himalaya · Lesser (Pir Panjal)', state: 'Jammu & Kashmir',
+    blurb: 'The top of the Gulmarg gondola, on the Pir Panjal. Across the Kashmir valley the Great Himalaya runs west to east, and far to the north Nanga Parbat marks where the whole range ends.',
+    main: 'Nanga Parbat',
+    rivers: [['Jhelum', 34.195, 74.37], ['Ningli Nallah', 34.08, 74.47]],
+    peaks: [
+      ['Nanga Parbat', 35.2375, 74.5891, 8126, 'The western anchor of the Himalaya and the ninth-highest mountain on Earth.'],
+      ['Haramukh', 34.398, 74.904, 5142, 'Sacred massif above the Gangabal lakes, guarding the north of the Kashmir valley.'],
+      ['Kolahoi', 34.205, 75.36, 5425, 'The "Goddess of Light" at the head of the Lidder valley above Pahalgam.'],
+      ['Amarnath Peak', 34.222, 75.503, 5186, 'Rises above the Amarnath cave shrine, east of Kolahoi.'],
+    ] },
+  { id: 'kausani', name: 'Kausani', short: 'Kausani', lat: 29.8431, lon: 79.6027, snap: 900, eyeAdd: 8,
+    section: 1, belt: 2, cellName: 'Kumaon Himalaya · Lesser', state: 'Uttarakhand',
+    blurb: 'A ridge-top village Gandhi called the Switzerland of India. From here a 300 km wall of the Great Himalaya runs from Chaukhamba to Panchachuli.',
+    main: 'Trisul',
+    rivers: [['Gomati', 29.905, 79.618], ['Saryu', 29.838, 79.771], ['Kosi', 29.79, 79.55]],
+    peaks: [
+      ['Trisul', 30.3106, 79.7767, 7120, 'The trident on the rim of the Nanda Devi Sanctuary; first 7,000 m summit ever climbed, in 1907.'],
+      ['Nanda Devi', 30.3764, 79.9708, 7816, 'The highest mountain entirely inside India, ringed by a sanctuary wall of peaks.'],
+      ['Nanda Devi East', 30.354, 80.011, 7434, 'The twin summit, joined to the main peak by a two-kilometre ridge.'],
+      ['Nanda Kot', 30.283, 80.067, 6861, '"Nanda\'s fortress", standing above the Pindari glacier.'],
+      ['Panchachuli', 30.215, 80.425, 6904, 'Five summits said to be the hearths of the Pandavas\' last meal, above Munsiyari.'],
+      ['Chaukhamba', 30.7472, 79.2861, 7138, 'The four-pillared massif behind Badrinath, at the head of the Gangotri glacier.'],
+      ['Nanda Ghunti', 30.35, 79.717, 6309, 'On the western rim of the Sanctuary, close to Roopkund.'],
+      ['Kamet', 30.92, 79.5917, 7756, 'The second-highest peak in Garhwal, standing near the Tibet border.'],
+      ['Dunagiri', 30.5167, 79.8333, 7066, 'The mountain of the Sanjeevani herb in the Ramayana.'],
+    ] },
+  { id: 'pangarchulla', name: 'Pangarchulla summit', short: 'Pangarchulla', lat: 30.4239, lon: 79.5916, snap: 900, eyeAdd: 2,
+    section: 1, belt: 1, cellName: 'Kumaon Himalaya · edge of the Greater', state: 'Uttarakhand',
+    blurb: 'Your December trek. A 4,580 m summit above Auli with a 360° ring of Garhwal giants: Nanda Devi to the east, Dunagiri and Hathi Parbat to the north, Chaukhamba to the west.',
+    main: 'Dunagiri',
+    rivers: [['Alaknanda', 30.552, 79.574], ['Dhauliganga', 30.49, 79.645], ['Rishiganga', 30.52, 79.73]],
+    peaks: [
+      ['Nanda Devi', 30.3764, 79.9708, 7816, 'The highest mountain entirely inside India.'],
+      ['Trisul', 30.3106, 79.7767, 7120, 'The trident of Shiva on the Sanctuary rim.'],
+      ['Dunagiri', 30.5167, 79.8333, 7066, 'Visible for the whole Pangarchulla trek; the Sanjeevani mountain of the Ramayana.'],
+      ['Changabang', 30.5, 79.933, 6864, 'A sheer granite fin on the Sanctuary wall, one of the hardest climbs in the range.'],
+      ['Hathi Parbat', 30.65, 79.683, 6727, 'The "elephant mountain", straight north across the Dhauliganga.'],
+      ['Ghori Parbat', 30.67, 79.633, 6708, 'Hathi\'s companion, the "horse mountain".'],
+      ['Kamet', 30.92, 79.5917, 7756, 'Garhwal\'s second-highest, near the Tibet border.'],
+      ['Mana Peak', 30.881, 79.615, 7272, 'Above Mana, the last village before Tibet.'],
+      ['Neelkanth', 30.7311, 79.4097, 6596, 'The pyramid above Badrinath, called the Queen of Garhwal.'],
+      ['Chaukhamba', 30.7472, 79.2861, 7138, 'Four pillars on the western skyline.'],
+      ['Nanda Ghunti', 30.35, 79.717, 6309, 'On the Sanctuary rim near Roopkund.'],
+    ] },
+  { id: 'kalapatthar', name: 'Kala Patthar', short: 'Kala Patthar', lat: 27.9957, lon: 86.8285, snap: 300, eyeAdd: 2,
+    section: 2, belt: 1, cellName: 'Nepal Himalaya · Greater', state: 'Khumbu, Nepal',
+    blurb: 'The black rock above Gorak Shep, the classic place to see Everest. You stand inside the Great Himalaya, surrounded by four of the six highest mountains on Earth.',
+    main: 'Everest',
+    rivers: [['Imja Khola', 27.86, 86.80], ['Dudh Koshi', 27.80, 86.72]],
+    peaks: [
+      ['Everest', 27.9881, 86.9250, 8849, 'Peak XV of the Great Trigonometrical Survey, computed in 1852 as the highest on Earth.'],
+      ['Lhotse', 27.9617, 86.9333, 8516, 'Joined to Everest by the South Col; the fourth-highest mountain.'],
+      ['Nuptse', 27.9672, 86.8861, 7861, 'The great wall that hides most of Everest from the valley.'],
+      ['Pumori', 28.0147, 86.8281, 7161, 'Named by George Mallory: the "unmarried daughter".'],
+      ['Changtse', 28.0247, 86.9136, 7543, 'Everest\'s northern neighbour, in Tibet.'],
+      ['Ama Dablam', 27.8614, 86.8614, 6812, '"Mother\'s necklace", the icon of the Khumbu.'],
+      ['Makalu', 27.8897, 87.0889, 8485, 'The fifth-highest mountain, a four-sided granite pyramid.'],
+      ['Cho Oyu', 28.0942, 86.6608, 8188, 'The sixth-highest; the Nangpa La trade pass runs beside it.'],
+      ['Taboche', 27.9056, 86.7956, 6495, 'Sharp twin of Cholatse above Pheriche.'],
+      ['Cholatse', 27.9183, 86.7672, 6440, 'Its north face drops straight to the Cho La pass.'],
+      ['Khumbutse', 28.0003, 86.8578, 6640, 'Border peak at the head of the Khumbu glacier.'],
+    ] },
+  { id: 'tigerhill', name: 'Tiger Hill, Darjeeling', short: 'Tiger Hill', lat: 26.9887, lon: 88.2879, snap: 300, eyeAdd: 12,
+    section: 2, belt: 2, cellName: 'Nepal Himalaya (west of the Teesta) · Lesser', state: 'West Bengal',
+    blurb: 'The sunrise point above Darjeeling. Kangchenjunga fills the northern sky, and on clear mornings Everest, Lhotse and Makalu show 170 km to the west.',
+    main: 'Kangchenjunga',
+    rivers: [['Rangeet', 27.12, 88.33], ['Teesta', 27.06, 88.46], ['Balason', 26.93, 88.22]],
+    peaks: [
+      ['Kangchenjunga', 27.7025, 88.1475, 8586, 'India\'s highest peak and the third-highest on Earth: the "five treasures of the snow".'],
+      ['Kabru', 27.6339, 88.1158, 7412, 'Kangchenjunga\'s long southern ridge, on the Nepal–Sikkim border.'],
+      ['Jannu', 27.6817, 88.0433, 7711, 'Officially Kumbhakarna; its north face looks like a giant\'s head.'],
+      ['Pandim', 27.5792, 88.2111, 6691, 'Guardian peak above Dzongri, on the HMI training route.'],
+      ['Everest', 27.9881, 86.9250, 8849, 'Only a small tooth from here, 170 km away.'],
+      ['Lhotse', 27.9617, 86.9333, 8516, 'Just right of Everest on the western horizon.'],
+      ['Makalu', 27.8897, 87.0889, 8485, 'The fifth-highest mountain, closer and bolder than Everest from here.'],
+      ['Chomolhari', 27.8261, 89.2683, 7326, 'The sacred border peak between Bhutan and Tibet, far to the north-east.'],
+    ] },
+];
+const SECTIONS = ['Punjab', 'Kumaon', 'Nepal', 'Assam'];
+const SECTION_RIVERS = ['Indus–Sutlej', 'Sutlej–Kali', 'Kali–Teesta', 'Teesta–Dihang'];
+const BELTS = ['Trans', 'Greater', 'Lesser', 'Shivalik'];
+const MAJOR_RIVERS = [['Indus', 34.42, 76.35], ['Sutlej', 31.58, 78.15], ['Ganga', 29.95, 78.2], ['Kali', 29.75, 80.42], ['Teesta', 27.35, 88.62], ['Brahmaputra', 28.25, 95.3], ['Jhelum', 34.25, 74.0], ['Chenab', 33.15, 75.9], ['Yarlung Tsangpo', 29.3, 90.0]];
+const NE_RIVERS = [[[97.294,34.833],[97.244,34.884],[97.195,34.918],[97.079,34.935]],[[72.789,34.63],[72.838,34.376],[72.855,34.257],[72.838,34.206],[72.805,34.156],[72.706,34.088]],[[81.287,30.785],[81.205,30.853]],[[76.766,31.412],[76.749,31.327],[76.716,31.293],[76.667,31.276],[76.601,31.31],[76.436,31.429]],[[95.396,28.007],[95.446,27.889],[95.363,27.804],[95.182,27.737],[95.116,27.703],[95.099,27.686],[95.116,27.686],[95.116,27.669],[95.132,27.669],[95.132,27.652],[95.083,27.618],[94.967,27.584],[94.884,27.55],[94.802,27.482],[94.719,27.415],[94.653,27.33],[94.637,27.279],[94.604,27.228],[94.571,27.195],[94.554,27.127],[94.521,27.076],[94.439,27.008],[94.34,26.957],[94.191,26.89],[94.125,26.873],[94.026,26.873],[93.746,26.737],[93.399,26.737],[93.251,26.72],[93.168,26.669],[93.003,26.636],[92.789,26.619],[92.657,26.585],[92.607,26.534],[92.541,26.517],[92.442,26.534],[92.31,26.5],[92.162,26.415],[92.079,26.365],[92.063,26.331],[91.964,26.263],[91.65,26.161],[91.551,26.144],[91.436,26.144],[91.254,26.178],[91.155,26.212],[91.056,26.195],[90.924,26.144],[90.759,26.161],[90.578,26.212],[90.363,26.178],[90.083,26.06],[89.884,25.907],[89.769,25.687]],[[72.145,31.192],[72.145,31.124],[72.096,31.056]],[[77.442,32.293],[77.129,32.462],[76.947,32.597],[76.766,32.665],[76.551,32.733],[76.436,32.835],[76.419,32.987],[76.337,33.122],[76.188,33.241],[76.023,33.326],[75.858,33.36],[75.759,33.376],[75.743,33.343],[75.743,33.309],[75.792,33.241],[75.809,33.207],[75.792,33.173],[75.677,33.156],[75.462,33.139],[75.314,33.173],[75.198,33.241],[75.116,33.241],[75.083,33.19],[75.0,33.173],[74.884,33.19],[74.802,33.122],[74.785,32.987],[74.587,32.784],[74.191,32.547],[73.845,32.377],[73.548,32.276],[73.333,32.14],[73.135,31.903],[72.97,31.751],[72.855,31.7],[72.723,31.683],[72.574,31.615],[72.442,31.53],[72.327,31.463],[72.277,31.395],[72.244,31.327],[72.244,31.259],[72.211,31.209],[72.145,31.192]],[[94.356,29.312],[94.521,29.447],[94.637,29.481],[94.752,29.481],[94.851,29.515],[94.901,29.583],[94.917,29.633],[94.901,29.684],[94.967,29.735],[95.066,29.752],[95.132,29.786],[95.132,29.854],[95.165,29.871],[95.248,29.871],[95.297,29.854],[95.297,29.82],[95.314,29.803],[95.363,29.786],[95.396,29.684],[95.413,29.532],[95.38,29.413],[95.297,29.329],[95.198,29.261],[95.066,29.193],[94.95,29.091],[94.835,28.939],[94.802,28.854],[94.884,28.837],[94.967,28.753],[95.05,28.617],[95.099,28.499],[95.099,28.431],[95.066,28.38],[95.017,28.312],[95.0,28.262],[95.017,28.194],[95.083,28.177],[95.198,28.177],[95.297,28.126],[95.396,28.007]],[[79.835,30.887],[79.818,30.836],[79.835,30.785],[79.851,30.717],[79.868,30.684],[79.835,30.65],[79.752,30.548],[79.67,30.514],[79.571,30.548],[79.472,30.514],[79.307,30.379],[79.224,30.294],[79.158,30.277],[79.059,30.294],[78.944,30.294],[78.779,30.26],[78.663,30.209],[78.614,30.108],[78.515,30.091],[78.383,30.125],[78.284,30.091],[78.201,30.006],[78.168,29.887],[78.185,29.769],[78.135,29.667],[78.036,29.6],[78.02,29.498],[78.086,29.329],[78.102,29.176],[78.086,29.041],[78.102,28.888],[78.168,28.617],[78.234,28.516],[78.267,28.448],[78.284,28.346],[78.333,28.262],[78.432,28.143],[78.597,28.024],[78.861,27.889],[79.026,27.821],[79.109,27.821],[79.175,27.787],[79.191,27.72],[79.257,27.686],[79.356,27.652],[79.439,27.618],[79.521,27.567],[79.587,27.466],[79.67,27.313],[79.736,27.211],[79.835,27.144],[79.917,27.127],[80.0,27.025],[80.099,26.839],[80.231,26.653],[80.429,26.466],[80.545,26.314],[80.578,26.229],[80.644,26.144],[80.759,26.06],[80.875,26.043],[80.974,26.06],[81.122,25.992],[81.304,25.84],[81.403,25.738],[81.403,25.687],[81.452,25.653],[81.568,25.602],[81.65,25.569],[81.683,25.518],[81.749,25.501],[81.865,25.501]],[[83.168,25.518],[83.234,25.518],[83.35,25.501]],[[83.515,25.501],[83.515,25.535],[83.597,25.586],[83.663,25.602],[83.713,25.586],[83.746,25.535],[83.795,25.518],[83.861,25.518],[83.96,25.569],[84.076,25.687],[84.175,25.721],[84.224,25.687],[84.29,25.704],[84.34,25.738],[84.422,25.755],[84.538,25.704],[84.637,25.704],[84.703,25.738],[84.818,25.755],[84.983,25.738],[85.116,25.687],[85.231,25.586],[85.347,25.552],[85.413,25.535],[85.462,25.535],[85.495,25.552],[85.561,25.552],[85.611,25.501]],[[96.172,35.138],[96.749,35.053],[97.079,34.935]],[[79.736,32.445],[79.422,32.75]],[[79.439,32.733],[79.34,32.885],[79.224,33.004],[79.043,33.139],[78.911,33.19],[78.812,33.156],[78.647,33.207],[78.251,33.393],[78.185,33.444],[78.152,33.495],[78.152,33.546],[78.069,33.614],[77.937,33.732],[77.789,33.851],[77.657,34.003],[77.525,34.105],[77.343,34.156],[76.964,34.291],[76.782,34.393],[76.667,34.494],[76.535,34.579],[76.386,34.647],[76.287,34.714],[76.221,34.782],[76.188,34.867],[76.205,34.918],[76.139,35.002],[75.99,35.121],[75.908,35.206],[75.858,35.29],[75.792,35.341],[75.693,35.324],[75.561,35.358],[75.429,35.443],[75.347,35.511],[75.33,35.561],[75.264,35.595],[75.149,35.595],[75.0,35.629],[74.835,35.697],[74.736,35.748],[74.736,35.815],[74.703,35.832],[74.653,35.832],[74.637,35.748],[74.637,35.595],[74.571,35.494],[74.455,35.443],[74.34,35.409],[74.224,35.409],[74.059,35.443],[73.861,35.494],[73.647,35.527],[73.416,35.544],[73.3,35.477],[73.284,35.324],[73.168,35.206],[72.987,35.087],[72.888,35.002],[72.871,34.935],[72.888,34.884],[72.954,34.85],[72.937,34.816],[72.871,34.782],[72.822,34.731],[72.789,34.63]],[[72.706,34.088],[72.657,34.037],[72.591,34.02],[72.508,34.02],[72.409,34.003],[72.294,33.952],[72.244,33.902],[72.228,33.817],[72.195,33.766],[72.129,33.783],[72.079,33.783],[72.046,33.749]],[[96.947,31.971],[97.063,31.7],[97.129,31.581],[97.178,31.53],[97.211,31.463],[97.211,31.378],[97.211,31.327],[97.178,31.293],[97.162,31.226],[97.195,31.141],[97.244,31.056],[97.327,30.971],[97.376,30.887],[97.376,30.785],[97.492,30.616]],[[82.393,30.413],[82.723,30.362],[82.822,30.379],[82.888,30.328],[82.937,30.26],[83.168,30.125],[83.762,29.837],[83.927,29.769],[83.977,29.718],[83.993,29.667],[84.01,29.617],[84.059,29.583],[84.191,29.549],[84.389,29.532],[84.505,29.447],[84.521,29.329],[84.637,29.261],[84.851,29.21],[85.017,29.227],[85.116,29.295],[85.231,29.312],[85.413,29.278],[85.594,29.21],[85.875,29.193],[86.287,29.227],[86.733,29.21],[87.178,29.142],[87.475,29.125],[87.657,29.159]],[[96.601,30.446],[96.683,30.446],[96.7,30.413],[96.716,30.328],[96.848,30.243],[97.112,30.142],[97.294,30.04],[97.376,29.921],[97.426,29.82],[97.442,29.735],[97.475,29.633]],[[91.518,31.937],[91.551,31.818],[91.601,31.751],[91.683,31.7],[91.749,31.598],[91.799,31.48],[91.865,31.412],[91.964,31.429],[92.03,31.395],[92.063,31.327],[92.129,31.293],[92.228,31.31],[92.277,31.344],[92.327,31.429],[92.426,31.48],[92.706,31.53],[92.871,31.564],[92.954,31.564],[93.02,31.53],[93.152,31.53],[93.35,31.547],[93.531,31.53],[93.68,31.496],[93.812,31.496],[93.927,31.53],[94.109,31.53],[94.373,31.496],[94.521,31.463],[94.571,31.446],[94.571,31.395],[94.521,31.293],[94.538,31.242],[94.587,31.242],[94.62,31.192],[94.67,31.124],[94.703,31.09],[94.752,31.073],[94.818,31.107],[94.917,31.158],[95.033,31.192],[95.182,31.192],[95.297,31.175],[95.396,31.141],[95.479,31.073],[95.561,30.988],[95.66,30.955],[95.792,30.988],[95.957,30.971],[96.155,30.921],[96.287,30.87],[96.337,30.836],[96.419,30.717],[96.502,30.531],[96.551,30.429],[96.601,30.446]],[[72.756,37.17],[72.657,37.035]],[[72.657,37.035],[72.36,36.984],[72.162,36.899]],[[81.634,31.446],[81.551,31.412],[81.502,31.395],[81.452,31.429],[81.287,31.53],[81.221,31.598],[81.188,31.666],[81.188,31.751],[81.221,31.835],[81.271,31.903],[81.353,31.954],[81.37,32.005],[81.304,32.038],[81.287,32.072],[81.287,32.14],[81.254,32.225],[81.188,32.326],[81.023,32.428],[80.776,32.513],[80.528,32.547],[80.314,32.547],[80.083,32.53],[79.736,32.445]],[[81.37,30.751],[81.287,30.785]],[[81.205,30.853],[80.875,31.056],[80.726,31.124],[80.627,31.124],[80.528,31.073],[80.479,31.056],[80.413,31.056],[80.297,31.124],[80.099,31.242],[79.983,31.344],[79.917,31.429],[79.802,31.48],[79.62,31.496],[79.455,31.547],[79.307,31.632],[79.175,31.666],[79.026,31.666],[78.927,31.7],[78.861,31.767],[78.812,31.818],[78.746,31.835],[78.647,31.801],[78.515,31.717],[78.449,31.649],[78.449,31.615],[78.399,31.598],[78.333,31.598],[78.284,31.581],[78.267,31.547],[78.152,31.53],[77.937,31.547],[77.756,31.513],[77.607,31.412],[77.492,31.361],[77.409,31.361],[77.36,31.344],[77.327,31.293],[77.277,31.259],[77.195,31.242],[77.096,31.276],[76.947,31.344],[76.881,31.378],[76.881,31.395],[76.848,31.412],[76.766,31.412]],[[76.436,31.429],[76.386,31.412],[76.37,31.395],[76.37,31.361],[76.535,31.141],[76.568,31.056],[76.518,31.005],[76.353,30.988],[76.073,31.005],[75.792,31.005],[75.528,30.988],[75.297,31.039],[75.132,31.141],[74.983,31.175],[74.884,31.158],[74.719,31.09],[74.505,30.955],[74.373,30.887],[74.34,30.887],[74.208,30.768],[74.01,30.514],[73.812,30.362],[73.498,30.26],[73.383,30.226],[73.333,30.192],[73.3,30.158],[73.267,30.142],[73.251,30.158],[73.152,30.125],[73.003,30.023],[72.855,29.955],[72.706,29.921],[72.624,29.871],[72.624,29.837],[72.558,29.837],[72.426,29.837],[72.31,29.786],[72.195,29.701],[72.145,29.633],[72.162,29.6],[72.129,29.566],[72.03,29.515]],[[92.987,34.105],[93.102,34.189],[93.267,34.223],[93.531,34.223],[93.713,34.24],[93.845,34.325],[94.01,34.494],[94.125,34.562],[94.208,34.579],[94.34,34.63],[94.488,34.714],[94.653,34.748],[94.868,34.698],[95.017,34.63],[95.116,34.528],[95.215,34.494],[95.297,34.494],[95.396,34.444],[95.512,34.359],[95.578,34.291],[95.578,34.257],[95.594,34.223],[95.66,34.206],[95.759,34.105],[95.908,33.935],[96.023,33.817],[96.089,33.783],[96.155,33.766],[96.188,33.783],[96.221,33.766],[96.238,33.732],[96.271,33.732],[96.353,33.732],[96.419,33.715],[96.452,33.647],[96.535,33.597],[96.65,33.563],[96.7,33.512],[96.7,33.461],[96.716,33.41],[96.749,33.376],[96.782,33.36],[96.799,33.376],[96.815,33.376],[96.815,33.326],[96.881,33.326],[96.964,33.343],[97.013,33.309],[97.013,33.241],[97.079,33.139],[97.211,33.004],[97.294,32.919],[97.343,32.902],[97.376,32.851],[97.409,32.75]],[[90.792,34.308],[91.155,34.325],[91.65,34.274],[91.848,34.24],[91.931,34.173],[92.03,34.173],[92.162,34.223],[92.31,34.24],[92.492,34.223],[92.624,34.173],[92.69,34.122],[92.789,34.088],[92.987,34.105]],[[78.333,30.921],[78.069,30.734],[77.987,30.565],[77.937,30.514],[77.904,30.531],[77.822,30.514],[77.657,30.463],[77.574,30.396],[77.574,30.277],[77.525,30.209],[77.442,30.125],[77.294,30.023],[77.195,29.871],[77.096,29.667],[77.079,29.532],[77.112,29.498],[77.112,29.464],[77.096,29.447],[77.096,29.43],[77.129,29.396],[77.145,29.346],[77.145,29.193],[77.162,29.058],[77.195,28.973],[77.228,28.854],[77.228,28.753],[77.244,28.651],[77.327,28.516],[77.459,28.431],[77.492,28.38],[77.475,28.329],[77.492,28.278],[77.525,28.211],[77.525,28.143],[77.492,28.075],[77.492,27.991],[77.558,27.855],[77.607,27.804],[77.657,27.804],[77.673,27.753],[77.657,27.652],[77.673,27.601],[77.69,27.584],[77.706,27.567],[77.69,27.533],[77.706,27.466],[77.772,27.364],[77.822,27.313],[77.888,27.262],[77.921,27.262],[77.937,27.279],[77.97,27.296],[77.987,27.279],[78.02,27.245],[78.02,27.195],[78.069,27.178],[78.152,27.195],[78.201,27.161],[78.218,27.11],[78.251,27.093],[78.284,27.11],[78.317,27.093],[78.317,27.076],[78.333,27.059],[78.383,27.059],[78.432,27.025],[78.482,26.957],[78.515,26.957],[78.548,26.957],[78.614,26.907],[78.663,26.89],[78.713,26.907],[78.779,26.873],[78.878,26.805],[78.944,26.754],[78.993,26.754],[79.026,26.72],[79.059,26.636],[79.142,26.585],[79.241,26.534],[79.257,26.517],[79.257,26.483],[79.257,26.466],[79.274,26.449],[79.274,26.432],[79.307,26.432],[79.406,26.432],[79.472,26.415],[79.488,26.365],[79.521,26.365],[79.538,26.348],[79.538,26.331],[79.538,26.314],[79.587,26.246],[79.719,26.161],[79.802,26.111],[79.868,26.094],[79.917,26.111],[79.934,26.128],[79.95,26.128],[79.95,26.094],[79.983,26.077],[80.05,26.077],[80.083,26.06],[80.083,26.009],[80.116,25.975],[80.215,25.924],[80.446,25.89],[80.528,25.873],[80.528,25.857],[80.528,25.84],[80.495,25.823],[80.528,25.789],[80.627,25.721],[80.71,25.704],[80.776,25.721],[80.842,25.721],[80.891,25.704],[80.924,25.67],[80.941,25.636],[80.974,25.619],[81.007,25.619],[81.023,25.602],[81.023,25.569],[81.056,25.535],[81.139,25.501]],[[77.525,35.527],[77.64,35.578],[77.69,35.629],[77.706,35.714],[77.591,35.849],[77.591,35.968],[77.706,36.103],[77.706,36.188],[77.591,36.239],[77.508,36.307],[77.475,36.391],[77.36,36.442],[77.178,36.459],[77.013,36.442],[76.898,36.408],[76.782,36.391],[76.683,36.391],[76.518,36.425],[76.469,36.476],[76.436,36.527],[76.337,36.594],[76.188,36.662],[76.056,36.764],[75.974,36.882],[75.941,37.018],[75.99,37.12]],[[87.657,29.159],[87.739,29.295],[87.822,29.346],[87.921,29.379],[88.02,29.379],[88.119,29.346],[88.185,29.346],[88.201,29.362],[88.251,29.362],[88.333,29.346],[88.432,29.329],[88.63,29.346],[89.406,29.362],[89.703,29.362],[89.769,29.329],[89.868,29.329],[89.967,29.362],[90.083,29.362],[90.215,29.346],[90.314,29.312],[90.396,29.278],[90.512,29.278],[90.66,29.329],[90.743,29.346],[90.759,29.312],[90.792,29.312],[90.825,29.329],[90.891,29.346],[91.04,29.312],[92.079,29.278],[92.459,29.227],[92.558,29.159],[92.69,29.108],[92.888,29.075],[93.02,29.075],[93.086,29.108],[93.119,29.108],[93.135,29.058],[93.185,29.024],[93.251,29.007],[93.333,29.058],[93.432,29.142],[93.564,29.176],[93.762,29.159],[93.927,29.176],[94.092,29.21],[94.224,29.244],[94.356,29.312]],[[94.076,33.156],[94.455,33.156],[94.505,33.207],[94.604,33.207],[94.769,33.173],[94.917,33.139],[95.033,33.089],[95.083,33.021],[95.099,32.97],[95.231,32.919],[95.446,32.868],[95.578,32.818],[95.627,32.75],[95.726,32.665],[95.875,32.58],[96.007,32.547],[96.106,32.564],[96.188,32.564],[96.238,32.53],[96.386,32.428],[96.452,32.343],[96.502,32.225],[96.584,32.157],[96.683,32.14],[96.766,32.089],[96.832,32.005],[96.881,31.971],[96.947,31.971]]];
+
+const TILE_URLS = [
+  'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png',
+  'https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png',
+];
+
+// =====================================================================================
+//  Shared helpers (same code as the worker)
+// =====================================================================================
+const SHARED = document.getElementById('shared-src').textContent;
+(0, eval)(SHARED);
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => Math.round(n).toLocaleString('en-IN');
+const TAU = Math.PI * 2;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const wrap = (a) => ((a % TAU) + TAU) % TAU;
+const angDiff = (a, b) => { let d = wrap(a - b); if (d > Math.PI) d -= TAU; return d; };
+const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+const dirWord = (az) => COMPASS[Math.round(wrap(az) / TAU * 16) % 16];
+
+// ---------- progress (per browser) ----------
+let SAVE = { solved: {}, score: 0 };
+try { const s = JSON.parse(localStorage.getItem('himalaya-skyline') || 'null'); if (s && s.solved) SAVE = s; } catch (e) {}
+function persist() { try { localStorage.setItem('himalaya-skyline', JSON.stringify(SAVE)); } catch (e) {} }
+function vpSolved(id) { return SAVE.solved[id] || (SAVE.solved[id] = {}); }
+
+// =====================================================================================
+//  Terrain streaming
+// =====================================================================================
+const tileCache = new Map();
+function loadTile(z, x, y) {
+  const key = z + '/' + x + '/' + y;
+  if (tileCache.has(key)) return tileCache.get(key);
+  const p = (async () => {
+    let lastErr;
+    for (const tpl of TILE_URLS) {
+      try {
+        const res = await fetch(tpl.replace('{z}', z).replace('{x}', x).replace('{y}', y), { mode: 'cors' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const bmp = await createImageBitmap(await res.blob());
+        const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256;
+        const ctx = cv.getContext('2d', { willReadFrequently: true }); ctx.drawImage(bmp, 0, 0);
+        const px = ctx.getImageData(0, 0, 256, 256).data, out = new Float32Array(65536);
+        for (let i = 0; i < 65536; i++) out[i] = px[i * 4] * 256 + px[i * 4 + 1] + px[i * 4 + 2] / 256 - 32768;
+        return out;
+      } catch (e) { lastErr = e; }
+    }
+    throw lastErr;
+  })();
+  tileCache.set(key, p);
+  p.catch(() => tileCache.delete(key));
+  return p;
+}
+
+async function buildLevels(vp, onProgress) {
+  const specs = [{ z: 11, maxD: 12000, cover: 14000 }, { z: 10, maxD: 62000, cover: 66000 }, { z: 9, maxD: vp.maxD, cover: vp.maxD + 8000 }];
+  const jobs = [];
+  for (const s of specs) {
+    const W = 256 * Math.pow(2, s.z);
+    const mpp = 40075016.7 * Math.cos(vp.lat * Math.PI / 180) / W;
+    const cx = (vp.lon + 180) / 360 * W, cy = (1 - mercN(vp.lat) / Math.PI) / 2 * W, r = s.cover / mpp;
+    const tx0 = Math.floor((cx - r) / 256), tx1 = Math.floor((cx + r) / 256), ty0 = Math.floor((cy - r) / 256), ty1 = Math.floor((cy + r) / 256);
+    const L = { z: s.z, W, maxD: s.maxD, x0: tx0 * 256, y0: ty0 * 256, w: (tx1 - tx0 + 1) * 256, h: (ty1 - ty0 + 1) * 256 };
+    L.data = new Float32Array(L.w * L.h);
+    s.L = L;
+    for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
+      // skip corner tiles that lie fully outside the circle
+      const nx = Math.max(tx * 256, Math.min(cx, tx * 256 + 256)), ny = Math.max(ty * 256, Math.min(cy, ty * 256 + 256));
+      if (Math.hypot(nx - cx, ny - cy) > r) continue;
+      jobs.push({ L, tx, ty, z: s.z });
+    }
+  }
+  let done = 0, failed = 0;
+  onProgress(0, jobs.length);
+  const queue = jobs.slice();
+  async function worker() {
+    while (queue.length) {
+      const j = queue.shift();
+      try {
+        const t = await loadTile(j.z, j.tx, j.ty);
+        const ox = j.tx * 256 - j.L.x0, oy = j.ty * 256 - j.L.y0;
+        for (let r = 0; r < 256; r++) j.L.data.set(t.subarray(r * 256, r * 256 + 256), (oy + r) * j.L.w + ox);
+      } catch (e) { failed++; }
+      done++; onProgress(done, jobs.length);
+    }
+  }
+  await Promise.all(Array.from({ length: 12 }, worker));
+  if (failed > jobs.length * 0.3) throw new Error('tiles');
+  return specs.map(s => s.L);
+}
+
+// =====================================================================================
+//  Panorama state
+// =====================================================================================
+const pano = $('pano'), fx = $('fx'), stage = $('stage'), labelsEl = $('labels');
+const pctx = pano.getContext('2d'), fctx = fx.getContext('2d');
+const mini = $('mini'), mctx = mini.getContext('2d');
+const compassC = $('compass-c'), cctx = compassC.getContext('2d');
+
+let worker = null, workerReady = false;
+let CUR = null;           // current viewpoint runtime object
+let LEVELS = null;
+let view = { heading: 0, pitch: 0.03, hfov: 60 * Math.PI / 180 };
+let frame = null;         // last frame from worker
+let frameCanvas = document.createElement('canvas');
+let reqId = 0, lastSent = 0, interacting = false, idleTimer = null;
+let showAll = false;
+let rivers = { segs: null, visible: [], tags: [] };
+
+function makeWorker() {
+  const src = SHARED + '\n' + document.getElementById('worker-src').textContent;
+  const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+  const w = new Worker(url);
+  w.onmessage = onWorker;
+  return w;
+}
+
+let losResolve = null, riverResolve = null, readyResolve = null;
+function onWorker(e) {
+  const m = e.data;
+  if (m.cmd === 'ready') { workerReady = true; readyResolve && readyResolve(); }
+  else if (m.cmd === 'frame') {
+    if (m.id < lastShown) return;
+    lastShown = m.id;
+    frame = m;
+    frame.depthArr = new Float32Array(m.depth);
+    frameCanvas.width = m.W; frameCanvas.height = m.H;
+    frameCanvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(m.img), m.W, m.H), 0, 0);
+    afterFrame();
+  } else if (m.cmd === 'los') { losResolve && losResolve(m.vis); }
+  else if (m.cmd === 'rivers') { riverResolve && riverResolve(m); }
+}
+let lastShown = 0;
+
+function cssSize() { return { W: stage.clientWidth, H: stage.clientHeight }; }
+function ppr() { return cssSize().W / view.hfov; }
+
+function requestRender(quality) {
+  if (!workerReady) return;
+  const { W, H } = cssSize();
+  const q = quality || 1;
+  const scale = q > 0.75 ? Math.min(1.5, window.devicePixelRatio || 1) : 0.5;
+  const rw = Math.max(64, Math.round(W * scale)), rh = Math.max(64, Math.round(H * scale));
+  worker.postMessage({ cmd: 'render', id: ++reqId, W: rw, H: rh, heading: view.heading, pitch: view.pitch, ppr: rw / view.hfov, quality: q });
+}
+
+function resizeCanvases() {
+  const { W, H } = cssSize(), dpr = Math.min(2, window.devicePixelRatio || 1);
+  for (const c of [pano, fx]) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
+  const cw = compassC.clientWidth; compassC.width = Math.round(cw * dpr); compassC.height = Math.round(40 * dpr);
+  const mw = mini.clientWidth; mini.width = Math.round(mw * dpr); mini.height = Math.round(mw * dpr);
+}
+
+// Draw the last frame, shifted/scaled to the current view (instant feedback while the worker catches up)
+function drawPano() {
+  if (!frame) return;
+  const { W, H } = cssSize(), dpr = pano.width / W;
+  pctx.setTransform(1, 0, 0, 1, 0, 0);
+  pctx.fillStyle = '#0b111b'; pctx.fillRect(0, 0, pano.width, pano.height);
+  const pNow = W / view.hfov;                 // css px per rad now
+  const sc = pNow / (frame.ppr / (frame.W / W)); // scale of the frame relative to now
+  const fW = W * sc, fH = (frame.H / frame.W) * W * sc;
+  const dx = -angDiff(view.heading, frame.heading) * pNow, dy = (view.pitch - frame.pitch) * pNow;
+  const x = (W - fW) / 2 + dx, y = (H - fH) / 2 + dy;
+  pctx.imageSmoothingEnabled = true;
+  pctx.drawImage(frameCanvas, x * dpr, y * dpr, fW * dpr, fH * dpr);
+}
+
+// =====================================================================================
+//  Projection of points into the current view
+// =====================================================================================
+function project(az, d, h) {
+  const { W, H } = cssSize(), p = W / view.hfov;
+  const alt = Math.atan2(h - d * d * CURV - CUR.eye, d);
+  return { x: W / 2 + angDiff(az, view.heading) * p, y: H / 2 - (alt - view.pitch) * p, alt };
+}
+// depth from the last frame at a css-pixel position (frame may be offset)
+function depthAt(cssX, cssY) {
+  if (!frame) return NaN;
+  const { W } = cssSize();
+  const fp = frame.ppr;                         // frame px per rad
+  const az = view.heading + (cssX - W / 2) / (W / view.hfov);
+  const alt = view.pitch + (cssSize().H / 2 - cssY) / (W / view.hfov);
+  const fx_ = frame.W / 2 + angDiff(az, frame.heading) * fp;
+  const fy_ = frame.H / 2 - (alt - frame.pitch) * fp;
+  const ix = Math.round(fx_), iy = Math.round(fy_);
+  if (ix < 0 || iy < 0 || ix >= frame.W || iy >= frame.H) return NaN;
+  return frame.depthArr[iy * frame.W + ix];
+}
+
+// =====================================================================================
+//  Labels, quiz markers, rivers
+// =====================================================================================
+let markerEls = new Map();
+function buildLabelEls() {
+  labelsEl.innerHTML = ''; markerEls.clear();
+  for (const p of CUR.peaks) {
+    const el = document.createElement('div'); el.className = 'pk';
+    el.innerHTML = '<div class="stem"></div><div class="txt"></div>';
+    const q = document.createElement('button'); q.className = 'q'; q.type = 'button'; q.textContent = '?';
+    q.setAttribute('aria-label', 'Name this peak');
+    q.addEventListener('pointerdown', (e) => e.stopPropagation());
+    q.addEventListener('click', (e) => { e.stopPropagation(); openGuess(p); });
+    const qs = document.createElement('div'); qs.className = 'q-stem';
+    labelsEl.append(el, qs, q);
+    markerEls.set(p, { el, q, qs });
+  }
+  rivers.tagEls = CUR.def.rivers.map(([name]) => {
+    const t = document.createElement('div'); t.className = 'river-tag'; t.textContent = name; t.hidden = true; labelsEl.append(t); return t;
+  });
+}
+
+function updateLabels() {
+  if (!CUR) return;
+  const { W, H } = cssSize();
+  const solved = vpSolved(CUR.def.id);
+  for (const p of CUR.peaks) {
+    const m = markerEls.get(p); if (!m) continue;
+    const pr = project(p.az, p.d, p.hs);
+    const onScreen = pr.x > -40 && pr.x < W + 40 && pr.y > -40 && pr.y < H + 10;
+    const isSolved = !!solved[p.name];
+    const target = p.visible;
+    const showLabel = onScreen && target && (isSolved || showAll);
+    const showQ = onScreen && target && !isSolved && !showAll;
+    m.el.hidden = !showLabel; m.q.hidden = !showQ; m.qs.hidden = !showQ;
+    if (showLabel) {
+      const stemH = 26 + (p.rank % 3) * 14;
+      m.el.style.transform = `translate(${pr.x}px, ${pr.y - 3}px)`;
+      m.el.querySelector('.stem').style.height = stemH + 'px';
+      const t = m.el.querySelector('.txt'); t.style.bottom = stemH + 'px';
+      t.innerHTML = `${p.name}<small>${fmt(p.h)} m</small>`;
+      m.el.classList.toggle('solved', isSolved);
+    }
+    if (showQ) {
+      const lift = 34 + (p.rank % 3) * 16;
+      m.q.style.transform = `translate(${pr.x}px, ${pr.y - lift}px)`;
+      m.qs.style.left = pr.x + 'px'; m.qs.style.top = (pr.y - lift + 15) + 'px'; m.qs.style.height = (lift - 18) + 'px';
+      m.q.classList.toggle('active', guessTarget === p);
+    }
+  }
+  // river name tags
+  CUR.def.rivers.forEach((r, i) => {
+    const t = rivers.tagEls && rivers.tagEls[i]; if (!t) return;
+    const best = rivers.anchorScreen && rivers.anchorScreen[i];
+    if (!best) { t.hidden = true; return; }
+    const pr = project(best.az, best.d, best.h);
+    t.hidden = !(pr.x > 0 && pr.x < W - 60 && pr.y > 60 && pr.y < H - 50);
+    t.style.transform = `translate(${pr.x + 6}px, ${pr.y + 4}px)`;
+  });
+}
+
+// After a new frame arrives: recompute which river segments are visible
+function afterFrame() {
+  drawPano();
+  computeVisibleRivers();
+  updateLabels();
+  drawMini();
+}
+
+function computeVisibleRivers() {
+  rivers.visible = [];
+  if (!rivers.segs || !frame) return;
+  const s = rivers.segs, { W, H } = cssSize();
+  const anchors = CUR.def.rivers.map(() => ({ best: null, dist: 4000 }));
+  for (let i = 0; i < s.length; i += 7) {
+    const [az1, d1] = azDist(CUR.lat, CUR.lon, s[i + 1], s[i]);
+    if (d1 < 200) continue;
+    const a = project(az1, d1, s[i + 2] + 4);
+    if (a.x < -20 || a.x > W + 20 || a.y < -20 || a.y > H + 20) continue;
+    const [az2, d2] = azDist(CUR.lat, CUR.lon, s[i + 4], s[i + 3]);
+    const b = project(az2, d2, s[i + 5] + 4);
+    if (Math.abs(a.x - b.x) > 60) continue;
+    const dep = depthAt((a.x + b.x) / 2, (a.y + b.y) / 2 + 0.5);
+    if (!(dep === dep)) continue;
+    if (dep < d1 * 0.93 - 150) continue;   // hidden behind nearer ground
+    const acc = s[i + 6];
+    rivers.visible.push({ ax: a.x, ay: a.y, bx: b.x, by: b.y, d: d1, acc, ph: (s[i] * 260 + s[i + 1] * 290) % TAU });
+    CUR.def.rivers.forEach((r, k) => {
+      const dd = Math.hypot((s[i + 1] - r[1]) * K_DEG, (s[i] - r[2]) * K_DEG * Math.cos(r[1] * Math.PI / 180));
+      const score = dd - Math.log(acc) * 200;
+      if (dd < 4500 && (!anchors[k].best || score < anchors[k].score)) anchors[k] = { best: { az: az1, d: d1, h: s[i + 2] + 4 }, score };
+    });
+  }
+  rivers.anchorScreen = anchors.map(a => a.best);
+}
+
+// rivers drawn every animation frame with a travelling glint
+function drawRivers(t) {
+  const { W, H } = cssSize(), dpr = fx.width / W;
+  fctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  fctx.clearRect(0, 0, W, H);
+  if (!rivers.visible.length || !frame) return;
+  // offset if the view moved since the frame
+  const pNow = W / view.hfov;
+  const sc = pNow / (frame.ppr / (frame.W / W));
+  const fdx = -angDiff(view.heading, frame.heading) * pNow, fdy = (view.pitch - frame.pitch) * pNow;
+  fctx.save();
+  fctx.translate(W / 2 + fdx, H / 2 + fdy); fctx.scale(sc, sc); fctx.translate(-W / 2, -H / 2);
+  fctx.lineCap = 'round';
+  const T = CUR.riverT;
+  for (const v of rivers.visible) {
+    const big = Math.log10(v.acc / T + 1);
+    const near = Math.max(0.35, Math.min(1.6, 9000 / v.d));
+    const w = Math.max(0.6, (0.7 + big * 1.3) * near);
+    const shimmer = reduced ? 0.5 : 0.5 + 0.5 * Math.sin(t * 0.0016 - v.ph);
+    const a = Math.min(0.95, 0.35 + big * 0.25) * (0.55 + 0.45 * shimmer);
+    fctx.strokeStyle = `rgba(110,195,255,${a})`;
+    fctx.lineWidth = w;
+    fctx.beginPath(); fctx.moveTo(v.ax, v.ay); fctx.lineTo(v.bx, v.by); fctx.stroke();
+    if (shimmer > 0.93 && !reduced) {
+      fctx.strokeStyle = `rgba(235,250,255,${(shimmer - 0.93) * 12})`;
+      fctx.lineWidth = w + 1.2;
+      fctx.beginPath(); fctx.moveTo(v.ax, v.ay); fctx.lineTo(v.bx, v.by); fctx.stroke();
+    }
+  }
+  fctx.restore();
+}
+
+// =====================================================================================
+//  Mini map + compass
+// =====================================================================================
+function drawMini() {
+  if (!CUR) return;
+  const s = mini.width, ctx = mctx, R = s / 2, range = 45000, k = (R - 6) / range;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, s, s);
+  ctx.save(); ctx.beginPath(); ctx.arc(R, R, R - 2, 0, TAU); ctx.clip();
+  ctx.fillStyle = 'rgba(8,12,20,.6)'; ctx.fillRect(0, 0, s, s);
+  const toXY = (lat, lon) => { const [az, d] = azDist(CUR.lat, CUR.lon, lat, lon); return [R + Math.sin(az) * d * k, R - Math.cos(az) * d * k]; };
+  // view cone
+  ctx.fillStyle = 'rgba(245,166,35,.16)';
+  ctx.beginPath(); ctx.moveTo(R, R);
+  ctx.arc(R, R, R, view.heading - Math.PI / 2 - view.hfov / 2, view.heading - Math.PI / 2 + view.hfov / 2); ctx.closePath(); ctx.fill();
+  // rivers
+  if (rivers.segs) {
+    const sg = rivers.segs; ctx.strokeStyle = 'rgba(110,195,255,.85)'; ctx.lineCap = 'round';
+    for (let i = 0; i < sg.length; i += 7) {
+      const w = Math.max(0.6, Math.log10(sg[i + 6] / CUR.riverT + 1) * 1.6) * (s / 150);
+      ctx.lineWidth = w;
+      const [x1, y1] = toXY(sg[i + 1], sg[i]), [x2, y2] = toXY(sg[i + 4], sg[i + 3]);
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+  }
+  // peaks
+  const solved = vpSolved(CUR.def.id);
+  for (const p of CUR.peaks) {
+    if (!p.visible || p.d > range * 1.02) continue;
+    const [x, y] = toXY(p.lat, p.lon);
+    ctx.fillStyle = solved[p.name] ? '#ffd38a' : '#ffffff';
+    ctx.beginPath(); ctx.moveTo(x, y - 4 * s / 150); ctx.lineTo(x - 3.5 * s / 150, y + 3 * s / 150); ctx.lineTo(x + 3.5 * s / 150, y + 3 * s / 150); ctx.fill();
+  }
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(R, R, R - 2, 0, TAU); ctx.stroke();
+  ctx.fillStyle = '#f5a623'; ctx.beginPath(); ctx.arc(R, R, 3.5 * s / 150, 0, TAU); ctx.fill();
+  ctx.fillStyle = '#9aa8bb'; ctx.font = `${11 * s / 150}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.fillText('N', R, 14 * s / 150);
+  ctx.textAlign = 'right'; ctx.fillText('45 km', s - 10, s - 8);
+}
+
+function drawCompass() {
+  const w = compassC.width, h = compassC.height, dpr = h / 40, ctx = cctx;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, w, h);
+  const W = w / dpr, p = cssSize().W / view.hfov;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const degPx = p * Math.PI / 180;
+  const minor = degPx > 18 ? 1 : degPx > 6 ? 5 : 10, major = minor === 1 ? 5 : minor === 5 ? 15 : 30;
+  const left = view.heading - (W / 2) / p, right = view.heading + (W / 2) / p;
+  const startDeg = Math.floor(left * 180 / Math.PI / minor) * minor;
+  ctx.font = '11px ui-monospace, Menlo, monospace'; ctx.textAlign = 'center';
+  for (let dg = startDeg; dg <= right * 180 / Math.PI + minor; dg += minor) {
+    const x = W / 2 + (dg * Math.PI / 180 - view.heading) * p;
+    const norm = ((dg % 360) + 360) % 360;
+    const isMajor = norm % major === 0;
+    ctx.strokeStyle = isMajor ? 'rgba(242,246,251,.8)' : 'rgba(242,246,251,.35)';
+    ctx.beginPath(); ctx.moveTo(x, 40); ctx.lineTo(x, isMajor ? 30 : 34); ctx.stroke();
+    if (isMajor) {
+      const card = norm % 45 === 0 ? ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][norm / 45] : null;
+      ctx.fillStyle = card ? '#f5a623' : 'rgba(242,246,251,.75)';
+      ctx.fillText(card || (norm + '°'), x, 24);
+    }
+  }
+  ctx.fillStyle = '#f5a623'; ctx.beginPath(); ctx.moveTo(W / 2 - 5, 40); ctx.lineTo(W / 2 + 5, 40); ctx.lineTo(W / 2, 34); ctx.fill();
+}
+
+// =====================================================================================
+//  Interaction: drag to look around, wheel/pinch to zoom
+// =====================================================================================
+const pointers = new Map();
+let dragStart = null, pinchStart = null, vel = 0, lastMoveT = 0;
+stage.addEventListener('pointerdown', (e) => {
+  if (!CUR) return;
+  stage.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 1) { dragStart = { x: e.clientX, y: e.clientY, h: view.heading, p: view.pitch, moved: false }; vel = 0; }
+  if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinchStart = { dist: Math.hypot(a.x - b.x, a.y - b.y), hfov: view.hfov }; }
+  stage.classList.add('dragging');
+});
+stage.addEventListener('pointermove', (e) => {
+  if (!pointers.has(e.pointerId)) return;
+  const prev = pointers.get(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 2 && pinchStart) {
+    const [a, b] = [...pointers.values()];
+    setFov(pinchStart.hfov * pinchStart.dist / Math.max(20, Math.hypot(a.x - b.x, a.y - b.y)));
+    return;
+  }
+  if (!dragStart) return;
+  const p = cssSize().W / view.hfov;
+  const dxp = e.clientX - dragStart.x, dyp = e.clientY - dragStart.y;
+  if (Math.abs(dxp) + Math.abs(dyp) > 4) dragStart.moved = true;
+  const now = performance.now();
+  vel = -(e.clientX - prev.x) / p / Math.max(8, now - lastMoveT); lastMoveT = now;
+  view.heading = wrap(dragStart.h - dxp / p);
+  view.pitch = clampPitch(dragStart.p + dyp / p);
+  onViewChanged(true);
+});
+function endPointer(e) {
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) pinchStart = null;
+  if (pointers.size === 0) {
+    stage.classList.remove('dragging');
+    if (dragStart && !dragStart.moved) { closeGuess(); hideFact(); }
+    dragStart = null;
+    if (!reduced && Math.abs(vel) > 0.0004) coast(); else onViewChanged(false);
+  }
+}
+stage.addEventListener('pointerup', endPointer);
+stage.addEventListener('pointercancel', endPointer);
+function coast() {
+  let last = performance.now();
+  const step = (t) => {
+    const dt = t - last; last = t;
+    view.heading = wrap(view.heading + vel * dt); vel *= Math.pow(0.992, dt);
+    onViewChanged(true);
+    if (Math.abs(vel) > 0.00005 && pointers.size === 0) requestAnimationFrame(step); else onViewChanged(false);
+  };
+  requestAnimationFrame(step);
+}
+stage.addEventListener('wheel', (e) => { e.preventDefault(); setFov(view.hfov * Math.exp(e.deltaY * 0.0012)); }, { passive: false });
+$('z-in').onclick = () => animateFov(view.hfov / 1.6);
+$('z-out').onclick = () => animateFov(view.hfov * 1.6);
+function clampPitch(p) { return Math.max(-0.35, Math.min(0.75, p)); }
+function setFov(f) { view.hfov = Math.max(2.5 * Math.PI / 180, Math.min(140 * Math.PI / 180, f)); onViewChanged(true); clearTimeout(idleTimer); idleTimer = setTimeout(() => onViewChanged(false), 180); }
+function animateFov(target, dur = 380) {
+  const from = view.hfov, t0 = performance.now();
+  const step = (t) => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3); setFov(from + (target - from) * e); if (k < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+function animateTo(heading, pitch, dur = 900) {
+  const h0 = view.heading, p0 = view.pitch, dh = angDiff(heading, h0), t0 = performance.now();
+  const step = (t) => { const k = Math.min(1, (t - t0) / dur), e = k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+    view.heading = wrap(h0 + dh * e); view.pitch = p0 + (pitch - p0) * e; onViewChanged(k < 1); if (k < 1) requestAnimationFrame(step); };
+  if (reduced) { view.heading = heading; view.pitch = pitch; onViewChanged(false); } else requestAnimationFrame(step);
+}
+let rafLow = 0;
+function onViewChanged(moving) {
+  interacting = moving;
+  drawPano(); updateLabels(); drawMini();
+  if (moving) {
+    const now = performance.now();
+    if (now - rafLow > 70) { rafLow = now; requestRender(0.5); }
+    clearTimeout(idleTimer); idleTimer = setTimeout(() => onViewChanged(false), 220);
+  } else requestRender(1);
+  if (guessTarget) positionGuess();
+}
+window.addEventListener('resize', () => { if (!CUR) return; resizeCanvases(); onViewChanged(false); });
+window.addEventListener('keydown', (e) => {
+  if (!CUR) return;
+  if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+  if ($('play').classList.contains('fade')) return;
+  const p = 6 * Math.PI / 180;
+  if (e.key === 'ArrowLeft') { view.heading = wrap(view.heading - p); onViewChanged(false); }
+  if (e.key === 'ArrowRight') { view.heading = wrap(view.heading + p); onViewChanged(false); }
+  if (e.key === '+' || e.key === '=') animateFov(view.hfov / 1.6);
+  if (e.key === '-') animateFov(view.hfov * 1.6);
+});
+
+// =====================================================================================
+//  Game: guessing
+// =====================================================================================
+let guessTarget = null, tries = 0, hintUsed = false, acIndex = -1, acItems = [];
+const ALL_NAMES = [...new Set(VIEWPOINTS.flatMap(v => v.peaks.map(p => p[0])))].sort();
+const EXTRA_NAMES = ['K2', 'Kanchenjunga', 'Annapurna', 'Dhaulagiri', 'Manaslu', 'Shivling', 'Bandarpunch', 'Saltoro Kangri', 'Nun', 'Kun', 'Stok Kangri', 'Swargarohini', 'Kedarnath', 'Satopanth', 'Thalay Sagar', 'Bhagirathi', 'Hardeol', 'Rajrambha', 'Siniolchu', 'Pauhunri', 'Kangto', 'Gyala Peri', 'Namcha Barwa', 'Shishapangma', 'Gauri Shankar', 'Lobuche', 'Island Peak', 'Kabru Dome', 'Rathong', 'Koktang', 'Deo Tibba', 'Indrasan', 'Hanuman Tibba', 'Rakaposhi', 'Tatakuti', 'Sunset Peak', 'Kazinag', 'Mrigthuni', 'Maiktoli', 'Bethartoli', 'Nanda Khat', 'Rishi Pahar'];
+const NAME_POOL = [...new Set([...ALL_NAMES, ...EXTRA_NAMES])].sort();
+const ALIASES = { 'kanchenjunga': 'Kangchenjunga', 'khangchendzonga': 'Kangchenjunga', 'kumbhakarna': 'Jannu', 'chomolungma': 'Everest', 'sagarmatha': 'Everest', 'mount everest': 'Everest', 'drongiri': 'Dunagiri', 'dronagiri': 'Dunagiri', 'nilkantha': 'Neelkanth', 'trishul': 'Trisul', 'harmukh': 'Haramukh', 'panchchuli': 'Panchachuli', 'chomolhari': 'Chomolhari', 'jomolhari': 'Chomolhari', 'nandakot': 'Nanda Kot', 'nandadevi': 'Nanda Devi', 'nanda devi main': 'Nanda Devi' };
+const norm = (s) => s.toLowerCase().replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
+function canonical(s) { const n = norm(s); if (ALIASES[n]) return ALIASES[n]; const hit = NAME_POOL.find(x => norm(x) === n); return hit || s.trim(); }
+
+const gEl = $('guess'), gIn = $('g-input'), gAc = $('g-ac'), gMsg = $('g-msg');
+function openGuess(p) {
+  guessTarget = p; tries = 0; hintUsed = false;
+  gIn.value = ''; gMsg.textContent = ''; gMsg.className = 'msg'; renderAc();
+  $('g-title').textContent = 'Which peak is this?';
+  gEl.hidden = false; positionGuess(); updateLabels();
+  setTimeout(() => gIn.focus({ preventScroll: true }), 30);
+}
+function closeGuess() { guessTarget = null; gEl.hidden = true; updateLabels(); }
+function positionGuess() {
+  if (!guessTarget) return;
+  const { W, H } = cssSize();
+  const pr = project(guessTarget.az, guessTarget.d, guessTarget.hs);
+  const gw = gEl.offsetWidth, gh = gEl.offsetHeight;
+  let x = pr.x - gw / 2, y = pr.y + 24;
+  if (W < 640) { x = (W - gw) / 2; y = H - gh - 60; }
+  x = Math.max(12, Math.min(W - gw - 12, x)); y = Math.max(64, Math.min(H - gh - 50, y));
+  gEl.style.left = x + 'px'; gEl.style.top = y + 'px';
+}
+function renderAc() {
+  const q = norm(gIn.value);
+  acItems = q ? NAME_POOL.filter(n => norm(n).includes(q)).slice(0, 6) : [];
+  if (q && !acItems.length) { const al = Object.keys(ALIASES).filter(a => a.includes(q)).map(a => ALIASES[a]); acItems = [...new Set(al)].slice(0, 6); }
+  acIndex = acItems.length ? 0 : -1;
+  gAc.innerHTML = '';
+  acItems.forEach((n, i) => {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = n; if (i === acIndex) b.className = 'on';
+    b.onclick = () => { gIn.value = n; submitGuess(); };
+    gAc.append(b);
+  });
+}
+gIn.addEventListener('input', renderAc);
+gIn.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault(); if (!acItems.length) return;
+    acIndex = (acIndex + (e.key === 'ArrowDown' ? 1 : -1) + acItems.length) % acItems.length;
+    [...gAc.children].forEach((b, i) => b.className = i === acIndex ? 'on' : '');
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    // first Enter fills from the list, second submits
+    if (acIndex >= 0 && acItems[acIndex] && norm(gIn.value) !== norm(acItems[acIndex])) { gIn.value = acItems[acIndex]; renderAc(); return; }
+    submitGuess();
+  } else if (e.key === 'Escape') closeGuess();
+});
+function submitGuess() {
+  const p = guessTarget; if (!p || !gIn.value.trim()) { gMsg.textContent = 'Type a peak name first.'; gMsg.className = 'msg bad'; return; }
+  const g = canonical(gIn.value);
+  tries++;
+  if (norm(g) === norm(p.name)) {
+    const pts = hintUsed ? 1 : tries === 1 ? 3 : tries === 2 ? 2 : 1;
+    solve(p, pts);
+  } else {
+    gMsg.textContent = tries >= 2 ? `Not ${g}. Try the hint, or Show me.` : `Not ${g}. Look again.`;
+    gMsg.className = 'msg bad';
+    gEl.classList.remove('shake'); void gEl.offsetWidth; gEl.classList.add('shake');
+    gIn.select();
+  }
+}
+$('g-hint').onclick = () => {
+  const p = guessTarget; if (!p) return; hintUsed = true;
+  gMsg.className = 'msg';
+  gMsg.textContent = `${fmt(p.h)} m high, ${fmt(p.d / 1000)} km away to the ${dirWord(p.az)}. Starts with "${p.name[0]}".`;
+};
+$('g-reveal').onclick = () => { if (guessTarget) solve(guessTarget, 0); };
+$('g-close').onclick = closeGuess;
+
+function solve(p, pts) {
+  const s = vpSolved(CUR.def.id);
+  if (!s[p.name]) { s[p.name] = pts; SAVE.score += pts; persist(); }
+  closeGuess();
+  showFact(p, pts);
+  updateProgress(); updateLabels(); drawMini();
+  const left = CUR.peaks.filter(q => q.visible && !s[q.name]);
+  if (!left.length) setTimeout(showDone, 1400);
+}
+let factTimer = null;
+function showFact(p, pts) {
+  const f = $('fact');
+  const praise = pts === 3 ? 'First try. ' : pts === 2 ? 'Got it. ' : pts === 1 ? 'There it is. ' : '';
+  f.innerHTML = `<div><b></b> <span class="meta"></span></div><div class="txt"></div>`;
+  f.querySelector('b').textContent = praise + p.name;
+  f.querySelector('.meta').textContent = `${fmt(p.h)} m · ${fmt(p.d / 1000)} km ${dirWord(p.az)} · +${pts}`;
+  f.querySelector('.txt').textContent = p.fact;
+  f.hidden = false; clearTimeout(factTimer); factTimer = setTimeout(hideFact, 7000);
+}
+function hideFact() { $('fact').hidden = true; }
+function updateProgress() {
+  const s = vpSolved(CUR.def.id), vis = CUR.peaks.filter(p => p.visible);
+  $('pl-progress').textContent = `${vis.filter(p => s[p.name] !== undefined).length}/${vis.length}`;
+  $('home-score').textContent = SAVE.score;
+}
+function showDone() {
+  const s = vpSolved(CUR.def.id), vis = CUR.peaks.filter(p => p.visible);
+  const got = vis.reduce((a, p) => a + (s[p.name] || 0), 0);
+  $('done-score').textContent = `${got} / ${vis.length * 3}`;
+  $('done-text').textContent = `You named the skyline from ${CUR.def.name}. ${vis.filter(p => s[p.name] === 3).length} of ${vis.length} on the first try.`;
+  $('done').hidden = false;
+}
+$('done-stay').onclick = () => { $('done').hidden = true; };
+$('done-next').onclick = () => {
+  $('done').hidden = true;
+  const i = VIEWPOINTS.findIndex(v => v.id === CUR.def.id);
+  goHome(VIEWPOINTS[(i + 1) % VIEWPOINTS.length]);
+};
+$('names-toggle').onclick = () => { showAll = !showAll; $('names-toggle').textContent = showAll ? 'Hide names' : 'Show all names'; closeGuess(); updateLabels(); };
+
+// =====================================================================================
+//  Loading a viewpoint
+// =====================================================================================
+function showLoader(text, frac) { $('loader').hidden = false; $('ld-text').textContent = text; $('ld-fill').style.width = Math.round(frac * 100) + '%'; }
+function hideLoader() { $('loader').hidden = true; }
+function fail(title, body) { $('fail').hidden = false; $('fail-title').textContent = title; $('fail-body').textContent = body; hideLoader(); }
+
+async function prepareViewpoint(def) {
+  tileCache.clear();
+  const vp = { def, lat: def.lat, lon: def.lon, maxD: 235000 };
+  buildLUT(vp.lat);
+  const levels = await buildLevels(vp, (d, n) => showLoader(`Streaming terrain ${d}/${n}`, d / Math.max(1, n)));
+  // snap viewer to the local high point (summits) and set eye height
+  const sn = snapHigh(levels, vp.lat, vp.lon, def.snap);
+  vp.lat = sn.lat; vp.lon = sn.lon; vp.eye = sn.h + def.eyeAdd;
+  // peaks: snap to highest cell within 1.6 km
+  vp.peaks = def.peaks.map(([name, lat, lon, h, fact], i) => {
+    const s = snapHigh(levels, lat, lon, 1600);
+    const [az, d] = azDist(vp.lat, vp.lon, s.lat, s.lon);
+    return { name, lat: s.lat, lon: s.lon, h, hs: s.h, az, d, fact, rank: i, visible: false };
+  });
+  return { vp, levels };
+}
+function snapHigh(levels, lat, lon, radius) {
+  let best = { lat, lon, h: -1e9 };
+  const n = 18;
+  for (let i = -n; i <= n; i++) for (let j = -n; j <= n; j++) {
+    const dy = i / n * radius, dx = j / n * radius; if (dx * dx + dy * dy > radius * radius) continue;
+    const la = lat + dy / K_DEG, lo = lon + dx / (K_DEG * Math.cos(la * Math.PI / 180));
+    const h = elevAt(levels, lo, la, 0);
+    if (h === h && h > best.h) best = { lat: la, lon: lo, h };
+  }
+  if (best.h < -1e8) best.h = 0;
+  return best;
+}
+
+async function enterViewpoint(def) {
+  $('fail').hidden = true;
+  try {
+    const { vp, levels } = await prepareViewpoint(def);
+    showLoader('Tracing rivers and sight lines', 1);
+    if (worker) worker.terminate();
+    workerReady = false; lastShown = 0; frame = null;
+    worker = makeWorker();
+    await new Promise((res) => { readyResolve = res; worker.postMessage({ cmd: 'init', levels: levels.map(l => ({ z: l.z, W: l.W, maxD: l.maxD, x0: l.x0, y0: l.y0, w: l.w, h: l.h, data: l.data })), vp: { lat: vp.lat, lon: vp.lon, eye: vp.eye, maxD: vp.maxD } }); });
+    // which quiz peaks can actually be seen
+    const vis = await new Promise((res) => { losResolve = res; worker.postMessage({ cmd: 'los', items: vp.peaks.map(p => ({ az: p.az, d: p.d, h: p.hs })) }); });
+    vp.peaks.forEach((p, i) => { p.visible = vis[i] && p.d < vp.maxD - 5000; });
+    // rivers from the terrain
+    const rv = await new Promise((res) => { riverResolve = res; worker.postMessage({ cmd: 'rivers', level: 1, radius: 48000, threshold: 450 }); });
+    LEVELS = levels;
+    CUR = { def, ...vp, riverT: 450 };
+    rivers = { segs: new Float32Array(rv.segs), visible: [], tagEls: [] };
+    addDetailedRiversToMap(def.id, rivers.segs);
+    // initial view: face the main peak
+    const main = vp.peaks.find(p => p.name === def.main && p.visible) || vp.peaks.find(p => p.visible) || vp.peaks[0];
+    const W = stage.clientWidth || innerWidth;
+    view.hfov = (W < 640 ? 50 : 62) * Math.PI / 180;
+    view.heading = main.az;
+    view.pitch = Math.max(0.0, Math.min(0.25, Math.atan2(main.hs - main.d * main.d * CURV - vp.eye, main.d) * 0.6));
+    $('pl-name').textContent = def.name;
+    $('pl-cell').textContent = def.cellName;
+    showAll = false; $('names-toggle').textContent = 'Show all names';
+    buildLabelEls(); updateProgress();
+    hideLoader();
+    return true;
+  } catch (e) {
+    console.error(e);
+    fail('Terrain data didn\'t arrive', 'The elevation tiles were blocked or there is no internet connection. Open this file in Chrome or Edge with an internet connection; preview panes block outside data.');
+    return false;
+  }
+}
+
+function showPlay() {
+  $('home').classList.add('fade'); $('play').classList.remove('fade');
+  resizeCanvases(); onViewChanged(false);
+}
+function goHome(selectNext) {
+  $('play').classList.add('fade'); $('home').classList.remove('fade');
+  closeGuess(); hideFact();
+  refreshHome();
+  if (map && CUR) {
+    map.flyTo({ center: [CUR.def.lon, CUR.def.lat], zoom: 6.4, pitch: 30, bearing: 0, duration: reduced ? 0 : 2600 });
+  }
+  if (selectNext) setTimeout(() => selectVp(selectNext), reduced ? 0 : 1400);
+}
+$('to-map').onclick = () => goHome();
+
+// animation loop for river glints
+function tick(t) {
+  if (CUR && !$('play').classList.contains('fade')) { drawRivers(t); drawCompass(); }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+// =====================================================================================
+//  Home: map, grid, viewpoint cards
+// =====================================================================================
+let map = null, selected = null;
+const vpMarkerEls = {};
+function buildGrid() {
+  const g = $('grid'); g.innerHTML = '';
+  g.append(Object.assign(document.createElement('div'), { className: 'h' }));
+  SECTIONS.forEach((s, i) => { const h = document.createElement('div'); h.className = 'h'; h.textContent = s; h.title = SECTION_RIVERS[i]; g.append(h); });
+  BELTS.forEach((b, r) => {
+    const rh = document.createElement('div'); rh.className = 'rh'; rh.textContent = b; g.append(rh);
+    SECTIONS.forEach((s, c) => {
+      const cell = document.createElement('div'); cell.className = 'cell' + (r === 1 ? ' greater' : '');
+      VIEWPOINTS.filter(v => v.section === c && v.belt === r).forEach(v => {
+        const pip = document.createElement('button'); pip.type = 'button'; pip.className = 'pip'; pip.title = v.name;
+        pip.setAttribute('aria-label', v.name); pip.dataset.id = v.id;
+        pip.onclick = () => selectVp(v);
+        cell.append(pip);
+      });
+      g.append(cell);
+    });
+  });
+}
+function vpComplete(v) {
+  const s = SAVE.solved[v.id]; if (!s) return false;
+  return Object.keys(s).length >= Math.max(3, Math.ceil(v.peaks.length * 0.5));
+}
+function refreshHome() {
+  $('home-score').textContent = SAVE.score;
+  document.querySelectorAll('.pip').forEach(p => {
+    const v = VIEWPOINTS.find(x => x.id === p.dataset.id);
+    p.classList.toggle('done', vpComplete(v)); p.classList.toggle('sel', selected === v);
+  });
+  for (const v of VIEWPOINTS) vpMarkerEls[v.id] && vpMarkerEls[v.id].classList.toggle('done', vpComplete(v));
+}
+function selectVp(v) {
+  selected = v;
+  $('vp-card').hidden = false; document.body.classList.add('has-card');
+  $('vp-tag').textContent = v.cellName;
+  $('vp-name').textContent = v.name;
+  $('vp-meta').textContent = `${v.state} · ${v.lat.toFixed(3)}°N ${v.lon.toFixed(3)}°E · ${v.peaks.length} peaks on the list`;
+  $('vp-blurb').textContent = v.blurb;
+  const s = SAVE.solved[v.id]; $('vp-progress').textContent = s ? `${Object.keys(s).length} named` : '';
+  refreshHome();
+  if (map) map.flyTo({ center: [v.lon, v.lat], zoom: 7.2, pitch: 45, bearing: 0, duration: reduced ? 0 : 1800 });
+}
+$('vp-close').onclick = () => { $('vp-card').hidden = true; document.body.classList.remove('has-card'); selected = null; refreshHome(); };
+$('vp-go').onclick = async () => {
+  const v = selected; if (!v) return;
+  $('vp-card').hidden = true; document.body.classList.remove('has-card');
+  // fly above in 3D while the terrain streams in
+  const main = v.peaks.find(p => p[0] === v.main);
+  const [az] = azDist(v.lat, v.lon, main[1], main[2]);
+  const fly = new Promise((res) => {
+    if (!map || reduced) return res();
+    map.once('moveend', res);
+    map.flyTo({ center: [v.lon, v.lat], zoom: 12.6, pitch: 76, bearing: az * 180 / Math.PI, duration: 6500, curve: 1.3 });
+  });
+  const ok = await Promise.all([enterViewpoint(v), fly]).then(r => r[0]);
+  if (ok) showPlay();
+};
+
+function addDetailedRiversToMap(id, segs) {
+  if (!map || !map.getSource('rivers-detail')) return;
+  const feats = [];
+  for (let i = 0; i < segs.length; i += 7) {
+    feats.push({ type: 'Feature', properties: { w: Math.log10(segs[i + 6] / 450 + 1) }, geometry: { type: 'LineString', coordinates: [[segs[i], segs[i + 1]], [segs[i + 3], segs[i + 4]]] } });
+  }
+  detailFeatures[id] = feats;
+  map.getSource('rivers-detail').setData({ type: 'FeatureCollection', features: Object.values(detailFeatures).flat() });
+}
+const detailFeatures = {};
+
+function initMap() {
+  const DEM = { type: 'raster-dem', tiles: TILE_URLS.slice(0, 1), encoding: 'terrarium', tileSize: 256, maxzoom: 12,
+    attribution: 'Terrain: Mapzen / AWS Terrain Tiles (SRTM, GMTED, ETOPO1) · Rivers: Natural Earth and traced from terrain' };
+  map = new maplibregl.Map({
+    container: 'map',
+    style: {
+      version: 8,
+      sources: { dem: DEM, demShade: DEM, demRelief: DEM,
+        rivers: { type: 'geojson', data: { type: 'FeatureCollection', features: NE_RIVERS.map(c => ({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: c } })) } },
+        'rivers-detail': { type: 'geojson', data: { type: 'FeatureCollection', features: [] } } },
+      layers: [
+        { id: 'bg', type: 'background', paint: { 'background-color': '#1b2430' } },
+        { id: 'relief', type: 'color-relief', source: 'demRelief', paint: { 'color-relief-color': ['interpolate', ['linear'], ['elevation'],
+          0, '#1d2733', 800, '#243243', 2000, '#33465c', 3500, '#4d6680', 4800, '#7d93ab', 5600, '#c3d0de', 7000, '#f2f6fb'] } },
+        { id: 'shade', type: 'hillshade', source: 'demShade', paint: {
+          'hillshade-method': 'multidirectional',
+          'hillshade-illumination-direction': [270, 315, 0, 45], 'hillshade-illumination-altitude': [30, 30, 30, 30],
+          'hillshade-highlight-color': ['#ffffff', '#f0f6ff', '#ffffff', '#f6f9ff'],
+          'hillshade-shadow-color': ['#06090f', '#0a0f18', '#06090f', '#0b1019'], 'hillshade-exaggeration': 0.6 } },
+        { id: 'rivers', type: 'line', source: 'rivers', paint: { 'line-color': '#6ec3ff', 'line-opacity': 0.85, 'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1, 8, 2.2] } },
+        { id: 'rivers-detail', type: 'line', source: 'rivers-detail', minzoom: 7, paint: { 'line-color': '#6ec3ff', 'line-opacity': 0.8,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 8, ['*', 0.7, ['+', 0.4, ['get', 'w']]], 13, ['*', 2.2, ['+', 0.4, ['get', 'w']]]] } },
+      ],
+      terrain: { source: 'dem', exaggeration: 1.25 },
+      sky: { 'sky-color': '#050a14', 'horizon-color': '#24456b', 'fog-color': '#1b2a3d', 'sky-horizon-blend': 0.7, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.8,
+        'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 1, 10, 1, 13, 0] },
+    },
+    center: [83.2, 30.4], zoom: 4.7, pitch: 20, bearing: 0, maxPitch: 82,
+    maxBounds: [[66, 20], [102, 41]], attributionControl: { compact: true },
+  });
+  map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
+  for (const v of VIEWPOINTS) {
+    const el = document.createElement('div'); el.className = 'vp-marker';
+    el.innerHTML = '<div class="nm"></div><div class="dot"></div>'; el.querySelector('.nm').textContent = v.short;
+    el.setAttribute('role', 'button'); el.tabIndex = 0; el.setAttribute('aria-label', v.name);
+    el.addEventListener('click', (e) => { e.stopPropagation(); selectVp(v); });
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter') selectVp(v); });
+    new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat([v.lon, v.lat]).addTo(map);
+    vpMarkerEls[v.id] = el;
+  }
+  for (const [name, lat, lon] of MAJOR_RIVERS) {
+    const el = document.createElement('div'); el.className = 'river-lbl'; el.textContent = name;
+    new maplibregl.Marker({ element: el }).setLngLat([lon, lat]).addTo(map);
+  }
+  refreshHome();
+}
+
+// Load MapLibre from the first CDN that answers. The game still works without it (no fly-in).
+function loadMapLibre() {
+  const SRC = [
+    ['https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js', 'https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css'],
+    ['https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.js', 'https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/maplibre-gl.css'],
+  ];
+  return new Promise((resolve) => {
+    let i = 0;
+    const next = () => {
+      if (window.maplibregl) return resolve(true);
+      if (i >= SRC.length) return resolve(false);
+      const [js, css] = SRC[i++];
+      const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = css; document.head.append(l);
+      const s = document.createElement('script'); s.src = js; s.onload = () => resolve(!!window.maplibregl); s.onerror = next; document.head.append(s);
+    };
+    next();
+  });
+}
+
+buildGrid();
+loadMapLibre().then((ok) => {
+  if (ok) { try { initMap(); } catch (e) { console.error(e); } }
+  else { $('map').innerHTML = '<div class="card" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);right:auto;bottom:auto"><span class="tag">Map unavailable</span><p>The map library didn\'t load, so there\'s no fly-in. Pick a viewpoint from the grid to play.</p></div>'; }
+  refreshHome();
+});
+window.__game = { VIEWPOINTS, get CUR() { return CUR; }, view, selectVp, enterViewpoint, showPlay, onViewChanged };
+</script>
+</body>
+</html>
