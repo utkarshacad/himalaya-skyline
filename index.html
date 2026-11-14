@@ -919,7 +919,7 @@ function elevAtPolar(levels, vp, pts) {
      (about one screen pixel at the default zoom). Vertex = 16 bytes: float32 east, north, height (m);
      uint8 u·255 (arc-length fraction), weight·255, gully (127 + 127·tanh(0.6·conv)), flag (tier + 2 on a line's last vertex). -->
 <script id="flow-src" type="text/plain">
-var FLOW_ALGO = 1, FLOW_SECTORS = 16, FLOW_PPR = 1150, FLOW_D0 = 150, FLOW_MAXD = 230000, FLOW_BUDGET = 1200000, FLOW_BYTES = 16, FLOW_WMAX = 0.15;
+var FLOW_ALGO = 2, FLOW_SECTORS = 16, FLOW_PPR = 1150, FLOW_D0 = 150, FLOW_MAXD = 230000, FLOW_BUDGET = 1500000, FLOW_BYTES = 16, FLOW_WMAX = 0.15;
 function flowSm(a, b, x) { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
 function flowSep(h) { return 1.1 + 15 * Math.pow(1 - flowSm(3600, 7000, h), 1.3); }      // spacing in cells: tight at the summits
 // o = { sector, az0, tiers: 1|2, occ: Int32Array|null ([u, v] cells taken by neighbouring sectors), budget }
@@ -962,12 +962,15 @@ function traceFlowSector(levels, vp, o) {
         if (!seen || !(h > 3300)) continue;
         if (!tier) { if (h > 5500) bands.cand55++; else if (h < 4000) bands.cand33++; }
         const r = hash(ui + o.sector * 977 + tier * 131, vi); if (r >= 0.91) continue;
-        const t1 = Math.pow(flowSm(3800, 7200, h), 1.2); let rel = NaN;
-        if (r >= 0.03 + 0.88 * t1) { rel = relAt(x, y, d, h); if (r >= 0.03 + 0.88 * Math.max(t1, flowSm(120, 650, rel))) continue; }
-        out.push([x, y, h, rel, d]);
+        const t1 = Math.pow(flowSm(3800, 7200, h), 1.2), rel = relAt(x, y, d, h);
+        if (r >= 0.03 + 0.88 * Math.max(t1, flowSm(120, 650, rel))) continue;
+        // priority: how bright this line's top will be at the default view (summit weight × distance fade), so
+        // near summits are traced before far ranges that the budget could never show
+        const pri = (0.05 + 0.2 * flowSm(4300, 7400, h) + 0.14 * flowSm(120, 650, rel)) * Math.max(0.02, 1 - 1.15 * d / 150000) * (0.25 + 0.75 * flowSm(2000, 25000, d));
+        out.push([x, y, h, rel, d, pri]);
       }
     }
-    return out.sort((a, b) => b[2] - a[2]);                  // highest first
+    return out.sort((a, b) => b[5] - a[5]);                  // brightest first
   }
   let cap = 65536, buf = new ArrayBuffer(cap * FLOW_BYTES), F = new Float32Array(buf), B = new Uint8Array(buf), nV = 0, nLines = 0, lineNo = 0;
   const grow = (need) => { if (nV + need <= cap) return; while (nV + need > cap) cap *= 2; const nb = new ArrayBuffer(cap * FLOW_BYTES); new Uint8Array(nb).set(B.subarray(0, nV * FLOW_BYTES)); buf = nb; F = new Float32Array(buf); B = new Uint8Array(buf); };
@@ -985,7 +988,7 @@ function traceFlowSector(levels, vp, o) {
       const u = cellU(x, y), v = cellV(d); if (u < 0 || u > GW - 1) break;
       if (h < h0 - 350 && near(u, v, id, flowSep(h) * 0.5 * sepK)) break;      // bunch freely near the top, thin out below
       PX[n] = x; PY[n] = y; PH[n] = h; PD[n] = d; n++; hPrev = h;
-      const step = 3 * d / PPR; x -= gx / gm * step; y -= gy / gm * step;
+      const step = 4 * d / PPR; x -= gx / gm * step; y -= gy / gm * step;
     }
     if (n < 6) return 0;
     let len = 0; for (let j = 1; j < n; j++) len += Math.hypot(PX[j] - PX[j - 1], PY[j] - PY[j - 1]);
