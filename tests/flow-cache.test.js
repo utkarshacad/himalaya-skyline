@@ -32,8 +32,9 @@ H.run('flow-cache: trace once, store, reuse', async (keep) => {
   await page.waitForTimeout(1200);
   await H.enter(page, 'kausani');
   await page.waitForFunction(() => window.__game.Flow.state().done >= 1 || !window.__game.Flow.state().tracing, null, { timeout: 120000, polling: 50 });
-  await page.evaluate(() => { window.__game.flowLog.length = 0; });
-  await H.enter(page, 'pangarchulla'); await waitDone(page, 60000);
+  // clear the log and switch in the same task, so only deliveries after the switch are counted
+  await page.evaluate(async () => { const g = window.__game; g.flowLog.length = 0; if (await g.enterViewpoint(g.VIEWPOINTS.find(v => v.id === 'pangarchulla'))) g.showPlay(); });
+  await page.waitForFunction(() => window.__game.ready(), null, { timeout: 90000, polling: 200 }); await waitDone(page, 60000);
   await page.waitForTimeout(3000);                                  // let any stale kausani work finish
   L = await log(page);
   H.check(L.length === 16 && L.every(e => e.key === 'pangarchulla@1'), `after the switch only pangarchulla's 16 sectors arrived (${L.map(e => e.key).filter(k => k !== 'pangarchulla@1').length} stray)`);
