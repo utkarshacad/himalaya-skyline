@@ -24,7 +24,7 @@
   --f-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   color-scheme: dark;
   /* panorama theme (dark = PeakFinder's dark theme) */
-  --pano-bg: #232427; --stem: rgba(255,255,255,.72); --lbl-fg: #ffffff; --lbl-bg: rgba(26,27,30,.8);
+  --pano-bg: #1f1f21; --stem: rgba(255,255,255,.72); --lbl-fg: #ffffff; --lbl-bg: rgba(26,27,30,.8);
   --q-line: #ffffff; --q-bg: rgba(20,21,24,.62); --q-fg: #ffffff; --river-shadow: 0 1px 3px #000;
   --rb-bg: rgba(26,27,30,.9); --rb-hover: rgba(48,50,55,.95); --rose-txt: #e9ebee; --rose-bg: rgba(26,27,30,.85);
   --ruler-bg: linear-gradient(0deg, rgba(23,24,27,.9), rgba(23,24,27,0));
@@ -643,6 +643,15 @@ function renderStrip(m) {
             const amt = T.shade * (1 - fd * 0.55);
             if (sh > 0) { const q = Math.min(1, sh * 2.1) * amt; r += (lit[0] - r) * q; g += (lit[1] - g) * q; b += (lit[2] - b) * q; }
             else { const q = Math.min(1, -sh * 1.25) * amt; r += (shd[0] - r) * q; g += (shd[1] - g) * q; b += (shd[2] - b) * q; }
+            // PeakFinder's look: ridges and spurs glow, gullies sink (curvature of the ground, not the sun)
+            const e2 = e * 2.5, dl = e2 / (K_DEG * cl), dt2 = e2 / K_DEG;
+            const c1 = elevAt(levels, lon + dl, lat, d), c2 = elevAt(levels, lon - dl, lat, d), c3 = elevAt(levels, lon, lat + dt2, d), c4 = elevAt(levels, lon, lat - dt2, d);
+            if (c1 === c1 && c2 === c2 && c3 === c3 && c4 === c4) {
+              const conv = (4 * h - c1 - c2 - c3 - c4) / e2;                      // + on ridges and spurs, − in gullies
+              const q = Math.tanh(conv * T.curvK) * T.curv * (1 - fd * 0.45);
+              if (q > 0) { r += (T.glow[0] - r) * q; g += (T.glow[1] - g) * q; b += (T.glow[2] - b) * q; }
+              else { const k2 = -q * 0.7; r += (shd[0] - r) * k2; g += (shd[1] - g) * k2; b += (shd[2] - b) * k2; }
+            }
           }
           const sn = Math.max(0, Math.min(1, (h - 4900) / 1300)) * T.snowAmt * (1 - fd * 0.6);
           r += (snow[0] - r) * sn; g += (snow[1] - g) * sn; b += (snow[2] - b) * sn;
@@ -657,7 +666,7 @@ function renderStrip(m) {
             const dip = angTop - minHid, drop = dip * lastD;
             if (dip > 0.00045 && drop > 3) {
               const a = (0.14 + drop / 140) * T.lineK * lineFade(lastD);
-              blend(xi, top, a); blend(xi, top + 1, a * 0.28);
+              blend(xi, top, a); blend(xi, top + 1, a * 0.3); blend(xi, top - 1, a * T.halo);
             }
           }
           top = yi; angTop = ang; lastD = d; prevVis = true; minHid = Infinity;
@@ -673,7 +682,7 @@ function renderStrip(m) {
     }
     if (top > 0 && top < H) {
       const a = (1 - 0.7 * smooth(maxD * 0.7, maxD, lastD)) * Math.min(1.25, T.lineK);
-      blend(xi, top, a); blend(xi, top + 1, a * 0.45); blend(xi, top - 1, a * 0.18);
+      blend(xi, top, a); blend(xi, top + 1, a * 0.45); blend(xi, top - 1, a * (0.18 + T.halo));
     }
   }
   // ---- contours: height of every terrain pixel from its depth. The interval doubles (50, 100, 200 … m)
@@ -1000,8 +1009,9 @@ let rivers = { verts: null, lines: null, ang: null, nv: 0, vis: null, buckets: n
 let intro = null;
 let needDraw = false, settleT = null, miniOn = false, scopeOn = false, tuneOn = false;
 
-let PREFS = { theme: 'dark', vis: 150, labels: 'quiz', contours: true };
+let PREFS = { theme: 'dark', vis: 150, labels: 'quiz', ct: { dark: false, light: true } };
 try { Object.assign(PREFS, JSON.parse(localStorage.getItem('himalaya-skyline-prefs') || '{}')); } catch (e) {}
+const contoursOn = () => !!(PREFS.ct || {})[PREFS.theme];
 function savePrefs() { try { localStorage.setItem('himalaya-skyline-prefs', JSON.stringify(PREFS)); } catch (e) {} }
 SAVE.marks = SAVE.marks || {};
 
@@ -1011,10 +1021,12 @@ let flyIdx = 0, eyeOff = 0, flying = null;
 const curEye = () => CUR.eye + eyeOff;
 
 const THEMES = {
-  dark: { skyTop: '#16171a', skyHor: '#2f3136', near: '#2a2b2f', far: '#4a4d53', lit: '#8d929a', shadow: '#121315', snow: '#a2a7af', snowAmt: .16,
-          line: '#ffffff', lineK: 1, shade: .78, haze: .78, cont: .085, contMaj: .15, contMinPx: 8, bg: '#232427',
+  dark: { skyTop: '#1b1b1d', skyHor: '#252527', near: '#19191b', far: '#313235', lit: '#4c4f54', shadow: '#0b0b0c', snow: '#7d8188', snowAmt: .08,
+          glow: '#b3b7be', curv: .5, curvK: .55, halo: .22,
+          line: '#ffffff', lineK: 1.05, shade: .32, haze: .7, cont: .08, contMaj: .14, contMinPx: 8, bg: '#1f1f21',
           river: [120, 172, 222], glint: [225, 240, 255], ink: '235,238,242', accent: '#ff3b77' },
   light: { skyTop: '#ffffff', skyHor: '#dde0e4', near: '#efeeeb', far: '#d6d9dd', lit: '#ffffff', shadow: '#83888f', snow: '#ffffff', snowAmt: .22,
+          glow: '#ffffff', curv: .3, curvK: .5, halo: .06,
           line: '#0d0e10', lineK: 1.5, shade: .9, haze: .5, cont: .27, contMaj: .44, contMinPx: 4.5, bg: '#ffffff',
           river: [38, 102, 168], glint: [255, 255, 255], ink: '21,23,26', accent: '#e0245e' },
 };
@@ -1067,7 +1079,7 @@ function newGen() {
   const order = [...Array(n).keys()].sort((a, b) => mid(a) - mid(b));
   const T = themeRGB(g.theme);
   order.forEach((idx, k) => workers[k % workers.length].postMessage({ cmd: 'strip', kind: 'strip', gen: g.id, idx, prio: k,
-    x0: idx * SW, w: SW, H: Hs, ppr, altTop: g.altTop, eye: g.eye, maxD: g.maxD, T, contours: PREFS.contours }));
+    x0: idx * SW, w: SW, H: Hs, ppr, altTop: g.altTop, eye: g.eye, maxD: g.maxD, T, contours: contoursOn() }));
   prepRivers(g);
   return g;
 }
@@ -1175,7 +1187,7 @@ function drawRivers(t) {
   const { W, H } = cssSize(), dpr = fx.width / W;
   fctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   fctx.clearRect(0, 0, W, H);
-  if (!rivers.vis || !CUR || (flying && flying.playing) || intro) return;
+  if (!rivers.vis || !CUR || flying || intro) return;
   const p = W / view.hfov, A = rivers.ang, V = rivers.verts, T = CUR.riverT, th = TH();
   const dEye = (G ? G.eye : CUR.eye) - curEye();
   const zoomK = Math.min(2.2, Math.max(0.7, p / 1100));
@@ -1491,7 +1503,7 @@ function updateFlyUI() {
   a.classList.toggle('up', flyIdx > 0);
   $('pl-elev').textContent = `${fmt(curEye())} m`;
 }
-function flyStep(dir) {
+function flyStepFilm(dir) {
   if (flying || intro || !CUR || !workers.length) return;
   const idx = Math.max(0, Math.min(FLY.length - 1, flyIdx + dir)); if (idx === flyIdx) return;
   const from = eyeOff, to = FLY[idx];
@@ -1507,13 +1519,14 @@ function flyStep(dir) {
   for (let i = 0; i < nF; i++) {
     const e = easeIO((i + 1) / nF), eye = CUR.eye + from + (to - from) * e;
     workers[i % workers.length].postMessage({ cmd: 'strip', kind: 'frame', gen: gid, idx: i, prio: -1000 + i, x0, w: Math.ceil(W * s) + 2,
-      H: Math.ceil(H * s), ppr, altTop: flying.altTop, eye, maxD: PREFS.vis * 1000, T, contours: PREFS.contours, k: 0.0075, minStep: 18 });
+      H: Math.ceil(H * s), ppr, altTop: flying.altTop, eye, maxD: PREFS.vis * 1000, T, contours: contoursOn(), k: 0.0075, minStep: 18 });
   }
   newGen();                                                // full-quality strips queue behind the film frames
   closeGuess(); updateFlyUI();
 }
 async function onFlyFrame(m) {
   const f = flying; if (!f || m.gen !== f.gen) return;
+  if (f.warp) { flyGL.setSource('B', new ImageData(new Uint8ClampedArray(m.img), m.w, m.H), frameDepthGrid(m, f)); f.hasB = true; return; }
   f.frames[m.idx] = await createImageBitmap(new ImageData(new Uint8ClampedArray(m.img), m.w, m.H));
   (f.log || (f.log = [])).push(Math.round(performance.now() - f.tStart));
   while (f.ready < f.nF && f.frames[f.ready]) f.ready++;
@@ -1521,7 +1534,8 @@ async function onFlyFrame(m) {
 }
 // the film clock only runs while the next frame exists, so a slow frame pauses the climb instead of jumping it
 function stepFly(t) {
-  const f = flying; if (!f || !f.playing) return;
+  const f = flying; if (f && f.warp) return stepWarp(t);
+  if (!f || !f.playing) return;
   const dt = Math.max(0, t - f.last); f.last = t;
   if (!f.endT) {
     const rate = f.dur ? f.nF / f.dur : Infinity;
@@ -1547,6 +1561,143 @@ function drawFly(W, H, dpr) {
   draw(i, 1); if (i < f.nF) draw(i + 1, a);
   if (f.endT) { pctx.globalAlpha = Math.min(1, (performance.now() - f.endT) / 320); if (G) drawGen(G, W, H, W / view.hfov, dpr); }
   pctx.globalAlpha = 1;
+}
+
+// =====================================================================================
+//  Fly-up on the GPU (WebGL2). The current picture and its per-pixel distance become a mesh; raising
+//  the eye by Δ moves every point down by atan(z−Δ, d), so near ridges drop fast and far ranges barely
+//  move: real parallax at 60 fps from the first frame. One true render at the target height (B) is
+//  warped back the other way and cross-faded in, so what is revealed behind ridges ends up exact.
+// =====================================================================================
+const flyGL = (() => {
+  const cv = document.createElement('canvas');
+  cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:none;opacity:1;transition:opacity .3s ease';
+  $('play').insertBefore(cv, $('fx'));
+  const gl = cv.getContext('webgl2', { antialias: true, premultipliedAlpha: false });
+  if (!gl) return null;
+  const sh = (type, src) => { const o = gl.createShader(type); gl.shaderSource(o, src); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+  const prog = gl.createProgram();
+  gl.attachShader(prog, sh(gl.VERTEX_SHADER, `#version 300 es
+    in vec2 a; uniform sampler2D dep; uniform vec2 res; uniform float ppr, pitch, dEye, maxD; out vec2 uv;
+    void main() {
+      uv = a; float d = texture(dep, a).r; vec2 px = a * res;
+      float y2 = px.y, z = 0.999;
+      if (d < 1e8) {
+        float alt = pitch + (res.y * 0.5 - px.y) / ppr;
+        float h = d * tan(alt);                       // height above the source eye (curvature cancels at equal d)
+        y2 = res.y * 0.5 - (atan(h - dEye, d) - pitch) * ppr;
+        z = clamp(d / maxD, 0.0, 0.998);
+      }
+      gl_Position = vec4(a.x * 2.0 - 1.0, 1.0 - 2.0 * y2 / res.y, z * 2.0 - 1.0, 1.0);
+    }`));
+  gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, `#version 300 es
+    precision highp float; uniform sampler2D col; uniform float alpha; in vec2 uv; out vec4 o;
+    void main() { o = vec4(texture(col, uv).rgb, alpha); }`));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return null;
+  const U = {}; for (const n of ['dep', 'col', 'res', 'ppr', 'pitch', 'dEye', 'maxD', 'alpha']) U[n] = gl.getUniformLocation(prog, n);
+  let GW = 0, GH = 0, nIdx = 0, vao = null;
+  const src = { A: null, B: null };
+  function mesh(gw, gh) {
+    if (gw === GW && gh === GH) return;
+    GW = gw; GH = gh;
+    const v = new Float32Array(gw * gh * 2);
+    for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) { v[(j * gw + i) * 2] = i / (gw - 1); v[(j * gw + i) * 2 + 1] = j / (gh - 1); }
+    const idx = new Uint32Array((gw - 1) * (gh - 1) * 6); let k = 0;
+    for (let j = 0; j < gh - 1; j++) for (let i = 0; i < gw - 1; i++) { const p = j * gw + i; idx.set([p, p + 1, p + gw, p + 1, p + gw + 1, p + gw], k); k += 6; }
+    nIdx = idx.length;
+    vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+    const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, v, gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, 'a'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
+  }
+  function tex(old, image, w, h, data) {
+    const t = old || gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+    if (data) gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, w, h, 0, gl.RED, gl.FLOAT, data);
+    else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    const f = data ? gl.NEAREST : gl.LINEAR;
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, f); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, f);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return t;
+  }
+  return {
+    grid: (W, H) => [Math.ceil(W / 3) + 1, Math.ceil(H / 3) + 1],   // a vertex every 3 px: ~190k triangles
+    setSource(k, image, dg) {
+      mesh(dg.gw, dg.gh);
+      const o = src[k] || {};
+      src[k] = { col: tex(o.col, image), dep: tex(o.dep, null, dg.gw, dg.gh, dg.data), eye: dg.eye };
+    },
+    clearB() { src.B = null; },
+    show() { cv.style.transition = 'none'; cv.style.opacity = '1'; cv.style.display = 'block'; },
+    hide() { cv.style.transition = ''; cv.style.opacity = '0'; setTimeout(() => { if (!flying) cv.style.display = 'none'; }, 320); },
+    draw(eye, wB) {
+      const { W, H } = cssSize(), dpr = Math.min(2, window.devicePixelRatio || 1);
+      if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+      gl.viewport(0, 0, cv.width, cv.height);
+      const bg = hexRGB(TH().bg); gl.clearColor(bg[0] / 255, bg[1] / 255, bg[2] / 255, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      gl.useProgram(prog); gl.bindVertexArray(vao); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS);
+      gl.uniform2f(U.res, W, H); gl.uniform1f(U.ppr, W / view.hfov); gl.uniform1f(U.pitch, view.pitch); gl.uniform1f(U.maxD, PREFS.vis * 1000 + 20000);
+      gl.uniform1i(U.dep, 0); gl.uniform1i(U.col, 1);
+      const pass = (S, alpha) => {
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, S.dep);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, S.col);
+        gl.uniform1f(U.dEye, eye - S.eye); gl.uniform1f(U.alpha, alpha);
+        gl.drawElements(gl.TRIANGLES, nIdx, gl.UNSIGNED_INT, 0);
+      };
+      gl.disable(gl.BLEND);
+      if (src.A) pass(src.A, 1);
+      if (src.B && wB > 0) { gl.clear(gl.DEPTH_BUFFER_BIT); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); pass(src.B, wB); }
+    },
+  };
+})();
+// distance at each mesh vertex, from the current panorama generation
+function viewDepthGrid(g, eye) {
+  const { W, H } = cssSize(), p = W / view.hfov, [gw, gh] = flyGL.grid(W, H), data = new Float32Array(gw * gh);
+  for (let j = 0; j < gh; j++) {
+    const alt = view.pitch + (H / 2 - j / (gh - 1) * H) / p;
+    for (let i = 0; i < gw; i++) { const d = depthAtAng(g, view.heading + (i / (gw - 1) * W - W / 2) / p, alt); data[j * gw + i] = d === d && d !== Infinity ? d : 1e9; }
+  }
+  return { gw, gh, data, eye };
+}
+// distance at each mesh vertex, from the target-height frame a worker rendered
+function frameDepthGrid(m, f) {
+  const { W, H } = cssSize(), [gw, gh] = flyGL.grid(W, H), data = new Float32Array(gw * gh), dep = new Uint16Array(m.depth);
+  for (let j = 0; j < gh; j++) {
+    const row = Math.min(m.H - 1, Math.round(j / (gh - 1) * H * f.s));
+    for (let i = 0; i < gw; i++) { const v = dep[row * m.w + Math.min(m.w - 1, Math.round(i / (gw - 1) * W * f.s + f.dx))]; data[j * gw + i] = v === 65535 ? 1e9 : v * 10; }
+  }
+  return { gw, gh, data, eye: CUR.eye + f.to };
+}
+function flyStep(dir) {
+  if (!flyGL) return flyStepFilm(dir);
+  if (flying || intro || !CUR || !workers.length || !G) return;
+  const idx = Math.max(0, Math.min(FLY.length - 1, flyIdx + dir)); if (idx === flyIdx) return;
+  const from = eyeOff, to = FLY[idx];
+  const { W, H } = cssSize(), cssPpr = W / view.hfov;
+  drawPano();
+  flyGL.clearB(); flyGL.setSource('A', pano, viewDepthGrid(G, CUR.eye + from));
+  flyIdx = idx;
+  const gid = genId + 1, s = Math.min(1, 1400 / W), ppr = cssPpr * s;
+  const xs = wrap(view.heading - (W / 2) / cssPpr) * ppr, x0 = Math.floor(xs);
+  flying = { warp: true, gen: gid, from, to, s, dx: xs - x0, clock: 0, last: performance.now(), hasB: false, endT: 0, dur: reduced ? 0 : 1500 + Math.abs(to - from) * 0.12 };
+  workers[0].postMessage({ cmd: 'strip', kind: 'frame', gen: gid, idx: 0, prio: -1000, x0, w: Math.ceil(W * s) + 2, H: Math.ceil(H * s), ppr,
+    altTop: view.pitch + (H / 2) / cssPpr, eye: CUR.eye + to, maxD: PREFS.vis * 1000, T: themeRGB(PREFS.theme), contours: contoursOn() });
+  newGen();
+  flyGL.show(); flyGL.draw(CUR.eye + from, 0);
+  closeGuess(); updateFlyUI(); needDraw = true;
+}
+function stepWarp(t) {
+  const f = flying, dt = Math.max(0, Math.min(100, t - f.last)); f.last = t;
+  // the climb only waits for the target frame at the gate, so it never stalls at the start
+  if (f.hasB || f.clock < f.dur * 0.35) f.clock += dt;
+  const u = f.dur ? Math.min(1, f.clock / f.dur) : 1;
+  eyeOff = f.from + (f.to - f.from) * easeIO(u);
+  flyGL.draw(CUR.eye + eyeOff, f.hasB ? easeIO(Math.max(0, Math.min(1, (u - 0.3) / 0.6))) : 0);
+  if (u >= 1 && !f.endT && f.hasB && G && (visibleReady(G) || (f.wait = (f.wait || 0) + dt) > 2500)) { f.endT = t; eyeOff = f.to; needDraw = true; flyGL.hide(); }
+  if (f.endT && t - f.endT > 320) { flying = null; updateFlyUI(); }
+  needDraw = true;
+  $('pl-elev').textContent = `${fmt(curEye())} m`;
 }
 
 // =====================================================================================
@@ -1705,7 +1856,7 @@ const visFill = () => $('vis').style.setProperty('--fill', (($('vis').value - 20
 function segInit(id, cur, onPick) {
   const el = $(id);
   const paint = (v) => el.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
-  paint(cur);
+  paint(cur); el._paint = paint;
   el.querySelectorAll('button').forEach(b => b.onclick = () => { paint(b.dataset.v); onPick(b.dataset.v); });
 }
 let visT = null;
@@ -1714,9 +1865,10 @@ $('vis').addEventListener('input', () => {
   PREFS.vis = +$('vis').value; $('vis-val').textContent = PREFS.vis + ' km'; visFill(); savePrefs();
   clearTimeout(visT); visT = setTimeout(() => { if (CUR && !flying) { newGen(); updateLabels(); } }, 160);
 });
-segInit('seg-theme', PREFS.theme, (v) => { PREFS.theme = v; savePrefs(); applyTheme(); if (CUR && !flying) newGen(); needDraw = true; });
+segInit('seg-theme', PREFS.theme, (v) => { PREFS.theme = v; savePrefs(); $('seg-contours')._paint && $('seg-contours')._paint(contoursOn() ? 'on' : 'off'); applyTheme(); if (CUR && !flying) newGen(); needDraw = true; });
 segInit('seg-labels', PREFS.labels, (v) => { PREFS.labels = v; savePrefs(); needDraw = true; });
-segInit('seg-contours', PREFS.contours ? 'on' : 'off', (v) => { PREFS.contours = v === 'on'; savePrefs(); if (CUR && !flying) newGen(); });
+PREFS.ct = Object.assign({ dark: false, light: true }, PREFS.ct);
+segInit('seg-contours', contoursOn() ? 'on' : 'off', (v) => { PREFS.ct[PREFS.theme] = v === 'on'; savePrefs(); if (CUR && !flying) newGen(); });
 function applyTheme() {
   document.body.dataset.theme = PREFS.theme;
   document.querySelector('meta[name=theme-color]') && document.querySelector('meta[name=theme-color]').setAttribute('content', TH().bg);

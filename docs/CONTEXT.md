@@ -131,6 +131,10 @@ Done in v2.3:
 
 Also: sharper terrain, with z12 out to 7 km, z11 to 20 km and z10 to 72 km, and a render scale of up to 2× on retina screens.
 
+### Round 11: PeakFinder video frames (15 November 2026)
+
+He sent three frames from the PeakFinder app: an even darker look, with ridges and spurs glowing and no contours. He also said fly-up still lagged and asked what WebGL is. v2.4 adds the curvature glow, the darker palette, per-theme contours (off in dark), and a WebGL depth-warp fly-up. GitHub Pages was still off; he was given the githack link and the steps to turn Pages on.
+
 ## Things he has rejected or disliked
 
 - The first prototype's look: MapLibre colour ramp, editorial panel.

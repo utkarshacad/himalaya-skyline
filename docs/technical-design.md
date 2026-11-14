@@ -61,7 +61,17 @@ The goal is PeakFinder's feel: a monochrome line drawing, and panning with no la
 ### Themes
 `THEMES.dark` follows PeakFinder's dark theme and `THEMES.light` its light theme (white ground, ink lines). Colours go to the worker as RGB arrays. CSS custom properties on `body[data-theme]` theme the labels, the telescope and the home map (`applyMapTheme`).
 
-### Fly-up (v2.1)
+### Shading (v2.4): PeakFinder's curvature glow
+PeakFinder's look is not sunlight: ridges and spurs glow, faces and gullies sink. Each visible sample reads 4 extra heights at 2.5× the level spacing and computes `conv = (4h − ΣN,E,S,W) / spacing`. Then `tanh(conv·curvK)·curv` pulls the tone toward `glow` on convex ground and toward `shadow` in concave ground. The sun hillshade remains as a weaker layer (`shade` .32 in dark). Ridge lines get a one-pixel halo above them (`halo`). The dark palette is charcoal (`bg #1f1f21`). Contours are a per-theme preference: off in dark, on in light.
+
+### Fly-up (v2.4): WebGL depth warp
+- A WebGL2 canvas sits above the panorama during a climb. The current picture (texture A) and its distance at a mesh vertex every 3 px (R32F texture) are drawn as a grid mesh.
+- The vertex shader moves each point to `atan(d·tan(alt) − Δeye, d)`, so near ridges drop fast and far ranges barely move. That is true parallax at 60 fps from the first frame, with no wait. The depth test keeps nearer terrain in front.
+- One worker renders a single real frame at the target height (B, about 0.9 s here in software). B is warped back the other way and cross-faded in from 30 % to 90 % of the climb, so ground revealed behind ridges ends up exact. If B is late, the clock waits only at the 35 % mark.
+- At the end the canvas fades out over the full-quality strips. Without WebGL2 the older frame film (`flyStepFilm`) is used.
+- Headless Chromium in the sandbox uses a software rasterizer, so frames there are slow. On a real GPU the warp itself costs well under a millisecond.
+
+### Fly-up (v2.1, now the fallback)
 - PeakFinder's "elevation offset". Steps are 0, +300, +800, +1,600, +3,000 and +5,000 m.
 - On a step, the current picture is frozen as frame 0. Workers then render **20 frames at full screen resolution** (capped at 1,400 columns) at eased heights. v2.1 used 26 frames at 0.4×, which looked like the screen blurring between steps.
   - The frames are queued before the full-quality strips and at top priority.
