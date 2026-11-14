@@ -54,15 +54,20 @@ The goal is PeakFinder's feel: a monochrome line drawing, and panning with no la
   - The fade goes to zero between 55 % and 100 % of the visibility range.
   - This replaces v1's rule (`d > lastD·1.1 + 250`), which drew nothing in the first 2–3 km and left a flat foreground wedge.
 - **Skyline:** the strongest line, fading only near the visibility limit.
-- **Height contours (optional):** faint 100 m lines, with a stronger one every 500 m, on visible terrain within 14 km.
+- **Sun hillshade:** each newly visible sample also reads the terrain gradient (2 extra height samples, spaced at the current level's resolution). Slopes facing a north-west sun 40° up get lighter; slopes facing away get darker. The effect fades with distance.
+- **Height contours (optional):** drawn in a per-pixel pass after the march. Each terrain pixel's height is rebuilt from its depth, as `eye + d·tan(alt) + d²·CURV`. A contour pixel is marked where its 50 m band differs from the pixel below or to the right on the same surface, with a bold line every 250 m, out to 24 km. Where contours would crowd into one pixel they fade out, so distant slopes stay clean.
 
 ### Themes
 `THEMES.dark` follows PeakFinder's dark theme and `THEMES.light` its light theme (white ground, ink lines). Colours go to the worker as RGB arrays. CSS custom properties on `body[data-theme]` theme the labels, the telescope and the home map (`applyMapTheme`).
 
-### Fly-up
+### Fly-up (v2.1)
 - PeakFinder's "elevation offset". Steps are 0, +300, +800, +1,600, +3,000 and +5,000 m.
-- On a step, the current picture is frozen as frame 0. Workers then render **7 half-resolution frames** at eased heights, at top priority (about 0.3 s).
-- The frames play as a cross-fading film over about 2.3–2.9 s. Meanwhile, full-quality strips for the new height render behind it.
+- On a step, the current picture is frozen as frame 0. Workers then render **26 frames at about 0.4× resolution** at eased heights.
+  - The frames are queued before the full-quality strips and at top priority.
+  - The film starts when 4 frames are ready, about 0.25 s.
+- The **film clock only advances while the next frame exists**, so a slow frame pauses the climb instead of jumping it.
+- The frames cross-fade over about 2.4–3 s. The film ends with a 320 ms fade into the full-quality view.
+- While playing, the home map is fully hidden (`#home.gone`). Compositing it behind the film, with a CSS filter running, made frames take about 600 ms each.
 - Labels follow the animated eye height. Quiz visibility is still decided from the ground.
 
 ### Interaction
@@ -87,11 +92,23 @@ The goal is PeakFinder's feel: a monochrome line drawing, and panning with no la
 - **Marks:** favourite (♥) and flag (⚑) per peak, saved in `SAVE.marks` and shown on labels and the mini-map.
 - **Labels:** slanted −52°, "Name 7,120 m", on one band above the highest labelled summit, with thin leader lines. They are decluttered left to right, keeping the higher peak.
 
+### Fly-in and fly-out (v2.1)
+1. The map's `flyTo` (about 6.5 s, during terrain loading) ends above the viewpoint.
+2. The panorama renders invisibly underneath, with `view.hfov` set to the map's horizontal FOV and pitch −2°.
+3. `#home.grade` greys the map with a CSS filter. The map then eases to an **eye-level camera** built with `calculateCameraOptionsFromCameraLngLatAltRotation(viewpoint, eye altitude, heading, 90° + pitch, roll 0)`. Roll must be given: `undefined` crashes MapLibre 5.24.
+4. **Sweep:** 9 alpha-masked copies of the current view are cut by depth (nearest ranges first, sky last) and cross-faded over the map for 2 s.
+5. The map fades out and the camera tilts up to the starting pitch.
+
+Leaving plays it in reverse: the map jumps to the same eye-level camera, already grey, the panorama dissolves into it, then the map regains colour and flies out. Terrain exaggeration is now 1.0, so the map and panorama heights match.
+
 ## Line of sight (which peaks become questions)
 
 The worker `los` command (run on worker 0, from the ground eye height) marches each peak's ray. The peak is visible if no terrain rises above the sight line by more than 0.0006 rad.
 
 ## Rivers traced from terrain
+
+(v2.1) Channel cells are chained into **downstream polylines**: walk from each channel head until meeting an already-walked river. Each line is smoothed twice with 1-2-1 weights and once with Chaikin, then drawn as quadratic curves. The glint is a dashed overlay whose offset travels downstream. The old output, one segment per D8 cell, made sharp zigzags.
+
 
 The worker `rivers` command runs on the z10 mosaic within 48 km:
 1. **Priority-flood** depression filling (binary heap, +0.01 m epsilon). The cell each cell was flooded from becomes its downstream (`parent`).

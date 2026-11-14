@@ -16,7 +16,7 @@
   --chrome-line: rgba(255, 255, 255, 0.12);
   --text: #f2f6fb;
   --muted: #9aa8bb;
-  --accent: #f5a623;     /* selected peak / CTA, PeakFinder orange */
+  --accent: #ff3b77;     /* selected peak / CTA, PeakFinder pink */
   --river: #6ec3ff;
   --good: #7fd18b;
   --bad: #ff7a6b;
@@ -28,13 +28,16 @@
   --q-line: #ffffff; --q-bg: rgba(20,21,24,.62); --q-fg: #ffffff; --river-shadow: 0 1px 3px #000;
   --rb-bg: rgba(26,27,30,.9); --rb-hover: rgba(48,50,55,.95); --rose-txt: #e9ebee; --rose-bg: rgba(26,27,30,.85);
   --ruler-bg: linear-gradient(0deg, rgba(23,24,27,.9), rgba(23,24,27,0));
+  --mini-bg: rgba(24,25,28,.86);
   --scope: #ffffff; --scope-dim: rgba(0,0,0,.16); --scope-x: #4fb3ff; --scope-txt: #ffffff;
 }
 body[data-theme=light] {
+  --accent: #e0245e;
   --pano-bg: #ffffff; --stem: rgba(21,23,26,.7); --lbl-fg: #15171a; --lbl-bg: rgba(255,255,255,.9);
   --q-line: #15171a; --q-bg: rgba(255,255,255,.8); --q-fg: #15171a; --river: #1677c9; --river-shadow: 0 0 3px #fff, 0 0 6px #fff;
   --rose-txt: #15171a; --rose-bg: rgba(255,255,255,.88);
   --ruler-bg: linear-gradient(0deg, rgba(255,255,255,.92), rgba(255,255,255,0));
+  --mini-bg: rgba(250,250,251,.92);
   --scope: #15171a; --scope-dim: rgba(255,255,255,.14); --scope-x: #1e88e5; --scope-txt: #15171a;
 }
 html, body { height: 100%; margin: 0; }
@@ -47,6 +50,17 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .view.fade { opacity: 0; pointer-events: none; }
 #map { position: absolute; inset: 0; background: #1b2430; }
 body[data-theme=light] #map { background: #eceef0; }
+#map { transition: filter 2.4s ease; }
+#home.gone { visibility: hidden; }
+#home.gone #map { transition: none; }
+#home.grade #map { filter: grayscale(1) brightness(.9) contrast(1.08); }
+body[data-theme=light] #home.grade #map { filter: grayscale(1) brightness(1.12) contrast(.9); }
+#home .bar, #home .grid-panel, #home .maplibregl-marker, #home .maplibregl-ctrl { transition: opacity .6s ease; }
+#home.grade .bar, #home.grade .grid-panel, #home.grade .card, #home.grade .maplibregl-marker, #home.grade .maplibregl-ctrl { opacity: 0; pointer-events: none; }
+#home.instant, #home.instant #map, #home.instant .bar, #home.instant .grid-panel, #home.instant .maplibregl-marker { transition: none !important; }
+#play.intro #pano { background: transparent; }
+#play .corner, #play #compass, #play #labels, #play #fx { transition: opacity .8s ease; }
+#play.intro .corner, #play.intro #vpbar, #play.intro #compass, #play.intro #labels, #play.intro #fx, #play.intro #veil { opacity: 0 !important; pointer-events: none; }
 body[data-theme=light] #home .bar { background: linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,0)); color: #15171a; }
 body[data-theme=light] .brand span { color: #5b6370; }
 body[data-theme=light] .vp-marker .nm { color: #15171a; text-shadow: 0 0 3px #fff, 0 0 8px #fff; }
@@ -77,12 +91,12 @@ body[data-theme=light] .river-lbl { color: #1677c9; text-shadow: 0 0 3px #fff, 0
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); white-space: nowrap;
 }
 .btn:hover { background: rgba(40, 50, 66, .9); }
-.btn.primary { background: var(--accent); border-color: transparent; color: #1a1206; font-weight: 600; }
+.btn.primary { background: var(--accent); border-color: transparent; color: #ffffff; font-weight: 600; }
 .btn.icon { width: 36px; height: 36px; padding: 0; display: grid; place-items: center; font-size: 18px; line-height: 1; }
 
 /* ---------- Map home ---------- */
 .vp-marker { display: grid; justify-items: center; gap: 4px; cursor: pointer; }
-.vp-marker .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff; box-shadow: 0 0 0 4px rgba(245,166,35,.25); }
+.vp-marker .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid #fff; box-shadow: 0 0 0 4px rgba(255,59,119,.25); }
 .vp-marker.done .dot { background: var(--good); box-shadow: 0 0 0 4px rgba(127,209,139,.25); }
 .vp-marker .nm { font-size: 12px; font-weight: 600; text-shadow: 0 1px 3px #000, 0 0 10px rgba(0,0,0,.8); white-space: nowrap; }
 .river-lbl { font: italic 500 12px/1 var(--f-ui); color: var(--river); text-shadow: 0 1px 3px #000; white-space: nowrap; pointer-events: none; letter-spacing: .03em; }
@@ -136,7 +150,7 @@ body[data-theme=light] .river-lbl { color: #1677c9; text-shadow: 0 0 3px #fff, 0
 .pk .txt small i { font-style: normal; font-size: 8.5px; margin-left: 1px; }
 .pk .txt .mk { color: var(--accent); margin-right: 4px; font-size: 11px; }
 .pk.solved .txt { box-shadow: inset 0 -1.5px 0 var(--accent); }
-.pk.sel .txt { background: var(--accent); color: #1a1206; }
+.pk.sel .txt { background: var(--accent); color: #ffffff; }
 .pk.sel .stem { background: var(--accent); }
 
 .q {
@@ -144,12 +158,12 @@ body[data-theme=light] .river-lbl { color: #1677c9; text-shadow: 0 0 3px #fff, 0
   width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%;
   border: 1.5px solid var(--q-line); background: var(--q-bg); color: var(--q-fg);
   display: grid; place-items: center; font: 600 15px/1 var(--f-ui);
-  box-shadow: 0 0 0 0 rgba(245,166,35,.6); animation: pulse 2.4s infinite;
+  box-shadow: 0 0 0 0 rgba(255,59,119,.6); animation: pulse 2.4s infinite;
   transition: background .2s, color .2s, border-color .2s;
 }
-.q:hover, .q.active { background: var(--accent); color: #1a1206; border-color: var(--accent); }
+.q:hover, .q.active { background: var(--accent); color: #ffffff; border-color: var(--accent); }
 .q-stem { position: absolute; width: 1px; background: var(--stem); pointer-events: none; }
-@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(245,166,35,.55); } 70% { box-shadow: 0 0 0 12px rgba(245,166,35,0); } 100% { box-shadow: 0 0 0 0 rgba(245,166,35,0); } }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,59,119,.55); } 70% { box-shadow: 0 0 0 12px rgba(255,59,119,0); } 100% { box-shadow: 0 0 0 0 rgba(255,59,119,0); } }
 
 .river-tag { position: absolute; left: 0; top: 0; font: italic 500 12px/1 var(--f-ui); color: var(--river); text-shadow: var(--river-shadow); white-space: nowrap; pointer-events: none; letter-spacing: .03em; }
 
@@ -162,7 +176,7 @@ body[data-theme=light] .river-lbl { color: #1677c9; text-shadow: 0 0 3px #fff, 0
 }
 .rb:hover { background: var(--rb-hover); }
 .rb:active { transform: scale(.94); }
-.rb.on { background: var(--accent); color: #1a1206; }
+.rb.on { background: var(--accent); color: #ffffff; }
 .rb svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .rb.sm { width: 40px; height: 40px; }
 .rb.sm svg { width: 20px; height: 20px; }
@@ -190,10 +204,11 @@ body[data-theme=light] .river-lbl { color: #1677c9; text-shadow: 0 0 3px #fff, 0
 
 /* compass rose (top right) */
 #rose svg { width: 30px; height: 30px; transition: none; }
+.tr-row { display: flex; gap: 8px; align-items: center; }
 #rose-deg { font: 600 11px/1 var(--f-mono); color: var(--rose-txt); background: var(--rose-bg); padding: 4px 7px; border-radius: 999px; }
 
 #mini {
-  width: 168px; height: 168px; border-radius: 50%; background: rgba(18,19,22,.82);
+  width: 168px; height: 168px; border-radius: 50%; background: var(--mini-bg);
   box-shadow: 0 6px 24px rgba(0,0,0,.35); transform-origin: 85% 0; transition: transform .35s cubic-bezier(.2,.8,.2,1), opacity .25s;
 }
 #mini.off { transform: scale(.4); opacity: 0; pointer-events: none; }
@@ -245,10 +260,10 @@ body[data-theme=light] .river-lbl { color: #1677c9; text-shadow: 0 0 3px #fff, 0
 #info .acts:empty { display: none; }
 .mark { width: 38px; height: 38px; border-radius: 50%; border: 0; background: rgba(255,255,255,.08); color: #e7e9ec; cursor: pointer; display: grid; place-items: center; transition: background .2s, color .2s, transform .25s cubic-bezier(.3,1.6,.5,1); }
 .mark svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.mark.on { color: #1a1206; background: var(--accent); }
+.mark.on { color: #ffffff; background: var(--accent); }
 .mark.on svg { fill: currentColor; }
 .mark.pop { transform: scale(1.22); }
-.mark.txtbtn { width: auto; padding: 0 14px; border-radius: 19px; font-size: 13px; font-weight: 600; background: var(--accent); color: #1a1206; }
+.mark.txtbtn { width: auto; padding: 0 14px; border-radius: 19px; font-size: 13px; font-weight: 600; background: var(--accent); color: #ffffff; }
 
 #vpbar { position: absolute; z-index: 16; left: 50%; bottom: calc(40px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); transition: opacity .2s; }
 #vpbar.off { opacity: 0; pointer-events: none; }
@@ -278,7 +293,7 @@ body[data-theme=light] .river-lbl { color: #1677c9; text-shadow: 0 0 3px #fff, 0
 .ac button small { color: #aab0ba; margin-left: 6px; }
 
 #done { left: 50%; right: auto; transform: translateX(-50%); bottom: auto; top: 50%; translate: 0 -50%; text-align: center; justify-items: center; }
-#done .big { font: 600 34px/1 var(--f-ui); color: #ffd38a; }
+#done .big { font: 600 34px/1 var(--f-ui); color: #ff9dbb; }
 
 #loader {
   position: absolute; z-index: 40; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
@@ -350,7 +365,10 @@ body[data-theme=light] .river-lbl { color: #1677c9; text-shadow: 0 0 3px #fff, 0
   </div>
 
   <div class="corner c-tr">
-    <button class="rb" id="rose" aria-label="Show the mini map" title="Mini map"><svg viewBox="-16 -16 32 32" id="rose-svg"><g id="rose-needle"><path d="M0 -13 L4.2 0 L-4.2 0 Z" fill="#ff5a4e" stroke="none"/><path d="M0 13 L4.2 0 L-4.2 0 Z" fill="#f4f5f7" stroke="none"/></g><circle r="2" fill="#15171a" stroke="none"/></svg></button>
+    <div class="tr-row">
+    <button class="rb sm" id="mini-btn" aria-label="Show the mini map" title="Mini map"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 12 7.5 5.2M12 12l4.5-6.8" opacity=".8"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg></button>
+    <button class="rb" id="rose" aria-label="Face true north" title="Face true north"><svg viewBox="-16 -16 32 32" id="rose-svg"><g id="rose-needle"><path d="M0 -13 L4.2 0 L-4.2 0 Z" fill="#ff5a4e" stroke="none"/><path d="M0 13 L4.2 0 L-4.2 0 Z" fill="#f4f5f7" stroke="none"/></g><circle r="2" fill="#15171a" stroke="none"/></svg></button>
+    </div>
     <span id="rose-deg">0°</span>
     <canvas id="mini" class="off" aria-label="Mini map"></canvas>
   </div>
@@ -505,17 +523,18 @@ function step() {
   setTimeout(step, 0);
 }
 
-// Front-to-back ray march per column. Each newly visible stretch of terrain is filled with a flat
-// tone (distance haze + slope light); where terrain reappears after being hidden behind a crest,
-// the crest gets an ink line whose weight follows how much ground it hides. Optional faint
-// 100 m contours on the near slopes. Depth is kept (decametres) for rivers and the telescope.
+// Front-to-back ray march per column. Each newly visible stretch of terrain is filled with a tone:
+// distance haze + sun hillshade (light from the north-west, from the terrain gradient) + a little
+// snow. Where terrain reappears after being hidden behind a crest, the crest gets an ink line whose
+// weight follows how much ground it hides. Then a per-pixel pass draws height contours (50 m, bold
+// every 250 m) from the depth buffer, so they run as continuous lines across the slopes.
 function renderStrip(m) {
   const { x0, w, H, ppr, altTop, eye, maxD, T } = m;
   const img = new Uint8ClampedArray(w * H * 4);
   const depth = new Uint16Array(w * H);
+  const dep = new Float32Array(w * H).fill(Infinity);
   const lat0 = vp.lat, lon0 = vp.lon;
-  const k = m.k || 0.0042, minStep = m.minStep || 8, contours = !!m.contours;
-  const CONT_D = 14000;
+  const k = m.k || 0.0042, minStep = m.minStep || 8;
   const sky = new Float32Array(H * 3);
   for (let y = 0; y < H; y++) {
     const alt = altTop - (y + 0.5) / ppr;
@@ -525,59 +544,62 @@ function renderStrip(m) {
   const L0 = T.line[0], L1 = T.line[1], L2 = T.line[2];
   function blend(x, y, a) {
     if (y < 0 || y >= H || a <= 0) return;
+    if (a > 1) a = 1;
     const p = (y * w + x) * 4;
     img[p] += (L0 - img[p]) * a; img[p + 1] += (L1 - img[p + 1]) * a; img[p + 2] += (L2 - img[p + 2]) * a;
   }
   const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
   const lineFade = (d) => (1 - 0.45 * Math.sqrt(d / maxD)) * (1 - smooth(maxD * 0.55, maxD, d));
   const near = T.near, far = T.far, lit = T.lit, shd = T.shadow, snow = T.snow, hor = T.skyHor;
+  // sun from the north-west, 40° up (east, north, up)
+  const LX = -0.5417, LY = 0.5417, LZ = 0.6428;
 
   for (let xi = 0; xi < w; xi++) {
     const az = (x0 + xi + 0.5) / ppr, s = Math.sin(az), c = Math.cos(az);
-    let top = H, lastD = 0, angTop = 0, prevVis = false, minHid = Infinity, prevH = NaN, prevVisH = NaN, step = minStep, d = 12;
+    let top = H, lastD = 0, angTop = 0, prevVis = false, minHid = Infinity, step = minStep, d = 12;
     while (d < maxD) {
       const lat = lat0 + d * c / K_DEG;
-      const lon = lon0 + d * s / (K_DEG * Math.cos(lat * 0.017453292519943295));
+      const cl = Math.cos(lat * 0.017453292519943295);
+      const lon = lon0 + d * s / (K_DEG * cl);
       const h = elevAt(levels, lon, lat, d);
       if (h === h) {
         const ang = Math.atan2(h - d * d * CURV - eye, d);
         let yi = Math.ceil((altTop - ang) * ppr);
         if (yi < top) {
           if (yi < 0) yi = 0;
-          // ---- tone
+          // ---- tone: base by distance, sun hillshade, snow, haze
           const fd = d / maxD, sf = Math.sqrt(fd);
           let r = near[0] + (far[0] - near[0]) * sf, g = near[1] + (far[1] - near[1]) * sf, b = near[2] + (far[2] - near[2]) * sf;
-          const slope = prevH === prevH ? Math.max(-1.5, Math.min(1.5, (h - prevH) / step)) : 0;
-          const amt = T.shade * (1 - fd * 0.75) * Math.min(1, Math.abs(slope));
-          const tg = slope > 0 ? lit : shd;
-          r += (tg[0] - r) * amt; g += (tg[1] - g) * amt; b += (tg[2] - b) * amt;
+          const e = d < 4500 ? 35 : d < 12000 ? 70 : d < 62000 ? 140 : 280;
+          const hE = elevAt(levels, lon + e / (K_DEG * cl), lat, d), hN = elevAt(levels, lon, lat + e / K_DEG, d);
+          if (hE === hE && hN === hN) {
+            const gx = (hE - h) / e, gy = (hN - h) / e, inv = 1 / Math.sqrt(gx * gx + gy * gy + 1);
+            const sh = (-gx * LX - gy * LY + LZ) * inv - LZ;             // >0 faces the sun, <0 in shadow
+            const amt = T.shade * (1 - fd * 0.55);
+            if (sh > 0) { const q = Math.min(1, sh * 2.4) * amt; r += (lit[0] - r) * q; g += (lit[1] - g) * q; b += (lit[2] - b) * q; }
+            else { const q = Math.min(1, -sh * 1.5) * amt; r += (shd[0] - r) * q; g += (shd[1] - g) * q; b += (shd[2] - b) * q; }
+          }
           const sn = Math.max(0, Math.min(1, (h - 4900) / 1300)) * T.snowAmt * (1 - fd * 0.6);
           r += (snow[0] - r) * sn; g += (snow[1] - g) * sn; b += (snow[2] - b) * sn;
           const hz = Math.pow(fd, 1.6) * T.haze;
           r += (hor[0] - r) * hz; g += (hor[1] - g) * hz; b += (hor[2] - b) * hz;
           const dv = Math.min(65534, Math.round(d / 10));
           for (let y = yi; y < top; y++) {
-            const p = (y * w + xi) * 4; img[p] = r; img[p + 1] = g; img[p + 2] = b; img[p + 3] = 255; depth[y * w + xi] = dv;
+            const i = y * w + xi, p = i * 4; img[p] = r; img[p + 1] = g; img[p + 2] = b; img[p + 3] = 255; depth[i] = dv; dep[i] = d;
           }
           // ---- crest line where terrain reappears behind a ridge
           if (!prevVis && top < H) {
             const dip = angTop - minHid, drop = dip * lastD;
             if (dip > 0.0006 && drop > 5) {
-              const a = Math.min(1, 0.2 + drop / 110) * lineFade(lastD);
+              const a = (0.2 + drop / 110) * T.lineK * lineFade(lastD);
               blend(xi, top, a); blend(xi, top + 1, a * 0.28);
             }
           }
-          // ---- faint height contours on near slopes
-          if (contours && prevVis && d < CONT_D && prevVisH === prevVisH) {
-            const c1 = Math.floor(prevVisH / 100), c2 = Math.floor(h / 100);
-            if (c1 !== c2 && Math.abs(c2 - c1) === 1) { const major = Math.max(c1, c2) % 5 === 0; blend(xi, yi, (major ? 0.26 : 0.11) * (1 - d / CONT_D)); }
-          }
-          top = yi; angTop = ang; lastD = d; prevVis = true; minHid = Infinity; prevVisH = h;
+          top = yi; angTop = ang; lastD = d; prevVis = true; minHid = Infinity;
           if (top <= 0) break;
         } else {
           prevVis = false; if (ang < minHid) minHid = ang;
         }
-        prevH = h;
       }
       step = Math.max(minStep, d * k); d += step;
     }
@@ -585,9 +607,29 @@ function renderStrip(m) {
       const p = (y * w + xi) * 4; img[p] = sky[y * 3]; img[p + 1] = sky[y * 3 + 1]; img[p + 2] = sky[y * 3 + 2]; img[p + 3] = 255; depth[y * w + xi] = 65535;
     }
     if (top > 0 && top < H) {
-      const a = 1 - 0.7 * smooth(maxD * 0.7, maxD, lastD);
+      const a = (1 - 0.7 * smooth(maxD * 0.7, maxD, lastD)) * Math.min(1.25, T.lineK);
       blend(xi, top, a); blend(xi, top + 1, a * 0.45); blend(xi, top - 1, a * 0.18);
     }
+  }
+  // ---- contours: height of every terrain pixel from its depth, line where it crosses a 50 m level
+  if (m.contours) {
+    const C = 50, CR = 24000, hgt = new Float32Array(w * H), mark = new Float32Array(w * H);
+    for (let y = 0; y < H; y++) {
+      const tn = Math.tan(altTop - (y + 0.5) / ppr);
+      for (let x = 0; x < w; x++) { const i = y * w + x, dd = dep[i]; hgt[i] = dd === Infinity ? NaN : eye + dd * tn + dd * dd * CURV; }
+    }
+    const test = (i, j) => {
+      const d1 = dep[i], d2 = dep[j];
+      if (d1 === Infinity || d2 === Infinity || d1 > CR || Math.abs(d1 - d2) > Math.max(60, d1 * 0.04)) return;
+      const h1 = hgt[i], h2 = hgt[j], c1 = Math.floor(h1 / C), c2 = Math.floor(h2 / C);
+      if (c1 === c2) return;
+      const dens = Math.max(0, Math.min(1, C / Math.abs(h1 - h2) - 0.35));   // fade where contours crowd into one pixel
+      const major = Math.max(c1, c2) % 5 === 0;
+      const a = (major ? T.contMaj : T.cont) * dens * (1 - smooth(CR * 0.45, CR, d1));
+      if (a > mark[i]) mark[i] = a;
+    };
+    for (let y = 0; y < H - 1; y++) for (let x = 0; x < w; x++) { const i = y * w + x; test(i, i + w); if (x < w - 1) test(i, i + 1); }
+    for (let i = 0; i < w * H; i++) if (mark[i] > 0) blend(i % w, (i / w) | 0, mark[i]);
   }
   postMessage({ cmd: 'strip', kind: m.kind, gen: m.gen, idx: m.idx, w, H, img: img.buffer, depth: depth.buffer }, [img.buffer, depth.buffer]);
 }
@@ -637,20 +679,47 @@ function traceRivers(m) {
   }
   const acc = new Float32Array(n).fill(1);
   for (let k = on - 1; k >= 0; k--) { const c = order[k], p = parent[c]; if (p >= 0) acc[p] += acc[c]; }
-  const out = [];
+  // chain channel cells into downstream polylines, then smooth away the 8-direction zigzag
   const toLon = (gx) => gx / L.W * 360 - 180;
   const toLat = (gy) => Math.atan(Math.sinh(Math.PI * (1 - 2 * gy / L.W))) * 180 / Math.PI;
+  const r2 = rpx * rpx, gcxL = gcx - x0, gcyL = gcy - y0;
+  const isCh = new Uint8Array(n), inflow = new Uint8Array(n), seen = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
-    if (acc[i] < T) continue;
-    const p = parent[i]; if (p < 0) continue;
-    const ax = i % w + x0 + L.x0 + 0.5, ay = ((i / w) | 0) + y0 + L.y0 + 0.5;
-    const bx = p % w + x0 + L.x0 + 0.5, by = ((p / w) | 0) + y0 + L.y0 + 0.5;
-    const la = toLat(ay), lo = toLon(ax);
-    const [, dd] = azDist(vp.lat, vp.lon, la, lo); if (dd > radius) continue;
-    out.push(lo, la, e[i], toLon(bx), toLat(by), e[p], acc[i]);
+    if (acc[i] < T || parent[i] < 0) continue;
+    const dx = i % w - gcxL, dy = ((i / w) | 0) - gcyL;
+    if (dx * dx + dy * dy <= r2) isCh[i] = 1;
   }
-  const arr = new Float32Array(out);
-  return { cmd: 'rivers', segs: arr.buffer, cellKm2: (mpp * mpp) / 1e6 };
+  for (let i = 0; i < n; i++) if (isCh[i]) inflow[parent[i]]++;
+  const verts = [], lines = [];
+  const pushLine = (cells) => {
+    if (cells.length < 2) return;
+    let X = cells.map(c => c % w + x0 + L.x0 + 0.5), Y = cells.map(c => ((c / w) | 0) + y0 + L.y0 + 0.5);
+    let E = cells.map(c => e[c]), A = cells.map(c => acc[c]);
+    for (let it = 0; it < 2; it++) {                       // 1-2-1 smoothing, ends pinned
+      const sm = (v) => v.map((x, j) => j === 0 || j === v.length - 1 ? x : (v[j - 1] + 2 * x + v[j + 1]) / 4);
+      X = sm(X); Y = sm(Y); E = sm(E);
+    }
+    const nx = [X[0]], ny = [Y[0]], ne = [E[0]], na = [A[0]];  // one Chaikin pass for round bends
+    for (let j = 0; j < X.length - 1; j++) {
+      nx.push(X[j] * .75 + X[j + 1] * .25, X[j] * .25 + X[j + 1] * .75); ny.push(Y[j] * .75 + Y[j + 1] * .25, Y[j] * .25 + Y[j + 1] * .75);
+      ne.push(E[j] * .75 + E[j + 1] * .25, E[j] * .25 + E[j + 1] * .75); na.push(A[j], A[j + 1]);
+    }
+    nx.push(X[X.length - 1]); ny.push(Y[Y.length - 1]); ne.push(E[E.length - 1]); na.push(A[A.length - 1]);
+    lines.push(verts.length / 4, nx.length);
+    for (let j = 0; j < nx.length; j++) verts.push(toLon(nx[j]), toLat(ny[j]), ne[j], na[j]);
+  };
+  // start at channel heads, longest-catchment first doesn't matter: each walk stops where it joins a walked river
+  for (let i = 0; i < n; i++) {
+    if (!isCh[i] || inflow[i] > 0) continue;
+    const cells = []; let c = i;
+    while (c >= 0) {
+      cells.push(c);
+      if (seen[c] || !isCh[c]) break;
+      seen[c] = 1; c = parent[c];
+    }
+    pushLine(cells);
+  }
+  return { cmd: 'rivers', verts: new Float32Array(verts).buffer, lines: new Int32Array(lines).buffer, cellKm2: (mpp * mpp) / 1e6 };
 }
 </script>
 
@@ -853,7 +922,8 @@ let CUR = null;                         // current viewpoint runtime object
 let view = { heading: 0, pitch: 0.03, hfov: 60 * Math.PI / 180 };
 let fovTarget = view.hfov;
 let G = null, Gprev = null, genId = 0;  // current and fallback panorama generations
-let rivers = { segs: null, ang: null, n: 0, vis: null, buckets: null, anchors: [], tagEls: [] };
+let rivers = { verts: null, lines: null, ang: null, nv: 0, vis: null, buckets: null, anchors: [], tagEls: [] };
+let intro = null;
 let needDraw = false, settleT = null, miniOn = false, scopeOn = false, tuneOn = false;
 
 let PREFS = { theme: 'dark', vis: 150, labels: 'quiz', contours: true };
@@ -867,10 +937,12 @@ let flyIdx = 0, eyeOff = 0, flying = null;
 const curEye = () => CUR.eye + eyeOff;
 
 const THEMES = {
-  dark: { skyTop: '#17181b', skyHor: '#323439', near: '#1c1d20', far: '#3f4248', lit: '#5c6068', shadow: '#111214', snow: '#8b9098',
-          line: '#ffffff', snowAmt: .22, shade: .55, haze: .78, bg: '#232427', river: [110, 195, 255], glint: [235, 250, 255], ink: '235,238,242', accent: '#f5a623' },
-  light: { skyTop: '#ffffff', skyHor: '#f0f1f3', near: '#fbfbfa', far: '#eceef0', lit: '#ffffff', shadow: '#c6c9cf', snow: '#ffffff',
-          line: '#15171a', snowAmt: .5, shade: .6, haze: .82, bg: '#ffffff', river: [22, 119, 201], glint: [255, 255, 255], ink: '21,23,26', accent: '#d9820b' },
+  dark: { skyTop: '#16171a', skyHor: '#2f3136', near: '#28292d', far: '#45484e', lit: '#868b94', shadow: '#0b0c0e', snow: '#a2a7af', snowAmt: .16,
+          line: '#ffffff', lineK: 1, shade: .78, haze: .78, cont: .17, contMaj: .34, bg: '#232427',
+          river: [150, 205, 255], glint: [245, 252, 255], ink: '235,238,242', accent: '#ff3b77' },
+  light: { skyTop: '#ffffff', skyHor: '#dde0e4', near: '#efeeeb', far: '#d6d9dd', lit: '#ffffff', shadow: '#83888f', snow: '#ffffff', snowAmt: .22,
+          line: '#0d0e10', lineK: 1.5, shade: .9, haze: .5, cont: .3, contMaj: .52, bg: '#ffffff',
+          river: [16, 104, 186], glint: [255, 255, 255], ink: '21,23,26', accent: '#e0245e' },
 };
 const hexRGB = (c) => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
 function themeRGB(name) { const t = THEMES[name], o = {}; for (const k in t) o[k] = typeof t[k] === 'string' && t[k][0] === '#' ? hexRGB(t[k]) : t[k]; return o; }
@@ -943,7 +1015,7 @@ function visibleReady(g) {
 }
 // does the current generation still cover the view sharply?
 function onSettle() {
-  if (!CUR || !G || flying) return;
+  if (!CUR || !G || flying || intro) return;
   const { W, H } = cssSize(), cssPpr = W / view.hfov;
   const z = cssPpr * G.s / G.ppr;
   const top = view.pitch + (H / 2) / cssPpr, bot = view.pitch - (H / 2) / cssPpr, gBot = G.altTop - G.Hs / G.ppr;
@@ -952,7 +1024,7 @@ function onSettle() {
 function viewMoved() { needDraw = true; clearTimeout(settleT); settleT = setTimeout(onSettle, 240); }
 
 // ---------- drawing ----------
-function drawGen(g, W, H, cssPpr, dpr) {
+function drawGen(g, W, H, cssPpr, dpr, ctx = pctx) {
   const sc = cssPpr / g.ppr, y = H / 2 - (g.altTop - view.pitch) * cssPpr, wS = SW * sc, hS = g.Hs * sc, full = TAU * cssPpr;
   for (let i = 0; i < g.n; i++) {
     const st = g.strips[i]; if (!st) continue;
@@ -960,7 +1032,7 @@ function drawGen(g, W, H, cssPpr, dpr) {
     for (const xx of [x, x - full, x + full]) {
       if (xx >= W || xx + wS <= 0) continue;
       const px = Math.floor(xx * dpr), pw = Math.ceil((xx + wS) * dpr) - px + 1;
-      pctx.drawImage(st.bmp, px, Math.round(y * dpr), pw, Math.round(hS * dpr));
+      ctx.drawImage(st.bmp, px, Math.round(y * dpr), pw, Math.round(hS * dpr));
     }
   }
 }
@@ -970,6 +1042,7 @@ function drawPano() {
   pctx.fillStyle = TH().bg; pctx.fillRect(0, 0, pano.width, pano.height);
   pctx.imageSmoothingEnabled = true; pctx.imageSmoothingQuality = 'high';
   if (flying && flying.playing) { drawFly(W, H, dpr); return; }
+  if (intro) { drawIntro(W, H, dpr); return; }
   if (Gprev) drawGen(Gprev, W, H, cssPpr, dpr);
   if (G) drawGen(G, W, H, cssPpr, dpr);
 }
@@ -996,67 +1069,83 @@ function depthAtAng(g, az, alt) {
 //  Rivers: traced segments, tested against each strip's depth as it arrives
 // =====================================================================================
 function prepRivers(g) {
-  if (!rivers.segs) return;
-  const s = rivers.segs, n = s.length / 7, eye = g.eye;
-  rivers.n = n; rivers.ang = new Float32Array(n * 5); rivers.vis = new Uint8Array(n);
+  if (!rivers.verts) return;
+  const V = rivers.verts, nv = V.length / 4, eye = g.eye;
+  rivers.nv = nv; rivers.ang = new Float32Array(nv * 3); rivers.vis = new Uint8Array(nv);
   rivers.buckets = Array.from({ length: g.n }, () => []);
   rivers.anchors = CUR.def.rivers.map(() => null); rivers.anchorScore = CUR.def.rivers.map(() => Infinity);
-  for (let i = 0; i < n; i++) {
-    const o = i * 7;
-    const [az1, d1] = azDist(CUR.lat, CUR.lon, s[o + 1], s[o]), [az2, d2] = azDist(CUR.lat, CUR.lon, s[o + 4], s[o + 3]);
-    if (d1 < 200 || d1 > g.maxD) continue;
-    const a1 = Math.atan2(s[o + 2] + 4 - d1 * d1 * CURV - eye, d1), a2 = Math.atan2(s[o + 5] + 4 - d2 * d2 * CURV - eye, d2);
-    rivers.ang.set([az1, a1, az1 + angDiff(az2, az1), a2, d1], i * 5);
-    rivers.buckets[Math.floor(wrap(az1) * g.ppr / SW) % g.n].push(i);
+  for (let v = 0; v < nv; v++) {
+    const [az, d] = azDist(CUR.lat, CUR.lon, V[v * 4 + 1], V[v * 4]);
+    rivers.ang[v * 3] = az; rivers.ang[v * 3 + 1] = Math.atan2(V[v * 4 + 2] + 4 - d * d * CURV - eye, d); rivers.ang[v * 3 + 2] = d;
+    if (d < 150 || d > g.maxD) continue;
+    rivers.buckets[Math.floor(wrap(az) * g.ppr / SW) % g.n].push(v);
   }
 }
 function stripRivers(g, idx) {
   if (!rivers.buckets || !rivers.buckets[idx]) return;
-  const A = rivers.ang, s = rivers.segs;
-  for (const i of rivers.buckets[idx]) {
-    const o = i * 5, az = (A[o] + A[o + 2]) / 2, alt = (A[o + 1] + A[o + 3]) / 2, d1 = A[o + 4];
-    const dep = depthAtAng(g, az, alt - 0.6 / g.ppr);
-    if (!(dep === dep) || dep < d1 * 0.93 - 150) continue;
-    rivers.vis[i] = 1;
-    const so = i * 7, acc = s[so + 6];
+  const A = rivers.ang, V = rivers.verts;
+  for (const v of rivers.buckets[idx]) {
+    const d = A[v * 3 + 2], dep = depthAtAng(g, A[v * 3], A[v * 3 + 1] - 0.6 / g.ppr);
+    if (!(dep === dep) || dep < d * 0.93 - 150) continue;
+    rivers.vis[v] = 1;
+    const acc = V[v * 4 + 3];
     CUR.def.rivers.forEach((r, k) => {
-      const dd = Math.hypot((s[so + 1] - r[1]) * K_DEG, (s[so] - r[2]) * K_DEG * Math.cos(r[1] * Math.PI / 180));
+      const dd = Math.hypot((V[v * 4 + 1] - r[1]) * K_DEG, (V[v * 4] - r[2]) * K_DEG * Math.cos(r[1] * Math.PI / 180));
       const score = dd - Math.log(acc) * 200;
-      if (dd < 4500 && score < rivers.anchorScore[k]) { rivers.anchorScore[k] = score; rivers.anchors[k] = { az: A[o], d: d1, h: s[so + 2] + 4 }; }
+      if (dd < 4500 && score < rivers.anchorScore[k]) { rivers.anchorScore[k] = score; rivers.anchors[k] = { az: A[v * 3], d, h: V[v * 4 + 2] + 4 }; }
     });
   }
 }
-// drawn every animation frame with a slow travelling glint
+// Rivers are continuous smoothed polylines: a calm base stroke, plus sparkles that travel downstream.
 function drawRivers(t) {
   const { W, H } = cssSize(), dpr = fx.width / W;
   fctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   fctx.clearRect(0, 0, W, H);
-  if (!rivers.vis || !CUR || (flying && flying.playing)) return;
-  const p = W / view.hfov, A = rivers.ang, s = rivers.segs, T = CUR.riverT, th = TH();
-  const dEye = (G ? G.eye : CUR.eye) - curEye();          // during fly-down the old eye height differs slightly
-  fctx.lineCap = 'round';
+  if (!rivers.vis || !CUR || (flying && flying.playing) || intro) return;
+  const p = W / view.hfov, A = rivers.ang, V = rivers.verts, T = CUR.riverT, th = TH();
+  const dEye = (G ? G.eye : CUR.eye) - curEye();
+  const zoomK = Math.min(2.2, Math.max(0.7, p / 1100));
   const [r, g, b] = th.river, [gr, gg, gb] = th.glint;
-  for (let i = 0; i < rivers.n; i++) {
-    if (!rivers.vis[i]) continue;
-    const o = i * 5, x1 = W / 2 + angDiff(A[o], view.heading) * p;
-    if (x1 < -30 || x1 > W + 30) continue;
-    const d = A[o + 4], lift = dEye / d;
-    const y1 = H / 2 - (A[o + 1] + lift - view.pitch) * p;
-    if (y1 < -30 || y1 > H + 30) continue;
-    const x2 = x1 + (A[o + 2] - A[o]) * p, y2 = H / 2 - (A[o + 3] + lift - view.pitch) * p;
-    const big = Math.log10(s[i * 7 + 6] / T + 1);
-    const near = Math.max(0.35, Math.min(1.6, 9000 / d)) * Math.min(2.2, Math.max(0.7, p / 1100));
-    const w = Math.max(0.6, (0.7 + big * 1.3) * near);
-    const ph = (s[i * 7] * 260 + s[i * 7 + 1] * 290) % TAU;
-    const shimmer = reduced ? 0.5 : 0.5 + 0.5 * Math.sin(t * 0.0016 - ph);
-    const a = Math.min(0.95, 0.35 + big * 0.25) * (0.55 + 0.45 * shimmer);
-    fctx.strokeStyle = `rgba(${r},${g},${b},${a})`; fctx.lineWidth = w;
-    fctx.beginPath(); fctx.moveTo(x1, y1); fctx.lineTo(x2, y2); fctx.stroke();
-    if (shimmer > 0.93 && !reduced) {
-      fctx.strokeStyle = `rgba(${gr},${gg},${gb},${(shimmer - 0.93) * 12})`; fctx.lineWidth = w + 1.2;
-      fctx.beginPath(); fctx.moveTo(x1, y1); fctx.lineTo(x2, y2); fctx.stroke();
+  fctx.lineCap = 'round'; fctx.lineJoin = 'round';
+  const runs = [];
+  for (const ln of rivers.lines) {
+    let run = null;
+    for (let j = 0; j < ln.n; j++) {
+      const v = ln.o + j;
+      const d = A[v * 3 + 2];
+      let ok = rivers.vis[v] === 1, x = 0, y = 0;
+      if (ok) {
+        x = W / 2 + angDiff(A[v * 3], view.heading) * p; y = H / 2 - (A[v * 3 + 1] + dEye / d - view.pitch) * p;
+        ok = x > -40 && x < W + 40 && y > -40 && y < H + 40 && (!run || Math.abs(x - run.xs[run.xs.length - 1]) < 90);
+      }
+      if (ok) {
+        if (!run) run = { xs: [], ys: [], acc: 0, d: 0 };
+        run.xs.push(x); run.ys.push(y); run.acc = Math.max(run.acc, V[v * 4 + 3]); run.d += d;
+        if (run.xs.length >= 14 && j < ln.n - 1) { runs.push(run); run = { xs: [x], ys: [y], acc: 0, d: d }; }   // re-weigh width as it grows
+      } else if (run) { if (run.xs.length > 1) runs.push(run); run = null; }
     }
+    if (run && run.xs.length > 1) runs.push(run);
   }
+  const path = (rn) => {
+    fctx.beginPath(); fctx.moveTo(rn.xs[0], rn.ys[0]);
+    const n = rn.xs.length;
+    for (let j = 1; j < n - 1; j++) fctx.quadraticCurveTo(rn.xs[j], rn.ys[j], (rn.xs[j] + rn.xs[j + 1]) / 2, (rn.ys[j] + rn.ys[j + 1]) / 2);
+    fctx.lineTo(rn.xs[n - 1], rn.ys[n - 1]);
+  };
+  for (const rn of runs) {
+    rn.big = Math.log10(rn.acc / T + 1); rn.dm = rn.d / rn.xs.length;
+    rn.w = Math.max(0.7, (0.75 + rn.big * 1.35) * Math.max(0.35, Math.min(1.6, 9000 / rn.dm)) * zoomK);
+    fctx.strokeStyle = `rgba(${r},${g},${b},${Math.min(0.92, 0.42 + rn.big * 0.26)})`; fctx.lineWidth = rn.w;
+    path(rn); fctx.stroke();
+  }
+  if (reduced) return;
+  fctx.setLineDash([2, 46]);
+  for (const rn of runs) {
+    fctx.lineDashOffset = -(t * 0.022 * Math.min(1.5, 0.6 + rn.big * 0.4)) % 48;
+    fctx.strokeStyle = `rgba(${gr},${gg},${gb},${Math.min(0.9, 0.35 + rn.big * 0.3)})`; fctx.lineWidth = rn.w + 0.6;
+    path(rn); fctx.stroke();
+  }
+  fctx.setLineDash([]);
 }
 
 // =====================================================================================
@@ -1234,33 +1323,47 @@ $('scope-btn').onclick = () => {
 function drawMini() {
   if (!CUR || !miniOn) return;
   const s = mini.width, ctx = mctx, R = s / 2, range = 45000, k = (R - 6) / range, u = s / 168;
+  const L = PREFS.theme === 'light', ink = L ? '24,26,30' : '232,235,239';
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, s, s);
   ctx.save(); ctx.beginPath(); ctx.arc(R, R, R - 1, 0, TAU); ctx.clip();
   const toXY = (lat, lon) => { const [az, d] = azDist(CUR.lat, CUR.lon, lat, lon); return [R + Math.sin(az) * d * k, R - Math.cos(az) * d * k]; };
-  ctx.fillStyle = 'rgba(245,166,35,.18)';
+  // range rings
+  ctx.strokeStyle = `rgba(${ink},.12)`; ctx.lineWidth = u;
+  for (const rr of [15000, 30000]) { ctx.beginPath(); ctx.arc(R, R, rr * k, 0, TAU); ctx.stroke(); }
+  // view cone
+  const g = ctx.createRadialGradient(R, R, 0, R, R, R);
+  g.addColorStop(0, `rgba(${ink},.26)`); g.addColorStop(1, `rgba(${ink},.04)`);
+  ctx.fillStyle = g;
   ctx.beginPath(); ctx.moveTo(R, R);
   ctx.arc(R, R, R, view.heading - Math.PI / 2 - view.hfov / 2, view.heading - Math.PI / 2 + view.hfov / 2); ctx.closePath(); ctx.fill();
-  if (rivers.segs) {
-    const sg = rivers.segs; ctx.strokeStyle = 'rgba(110,195,255,.62)'; ctx.lineCap = 'round';
-    for (let i = 0; i < sg.length; i += 7) {
-      ctx.lineWidth = Math.max(0.45, Math.log10(sg[i + 6] / CUR.riverT + 1) * 1.15) * u;
-      const [x1, y1] = toXY(sg[i + 1], sg[i]), [x2, y2] = toXY(sg[i + 4], sg[i + 3]);
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  // rivers as smooth grey lines
+  if (rivers.lines) {
+    ctx.strokeStyle = `rgba(${ink},.42)`; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const ln of rivers.lines) {
+      ctx.lineWidth = Math.max(0.5, Math.log10(ln.acc / CUR.riverT + 1) * 1.1) * u;
+      ctx.beginPath();
+      for (let j = 0; j < ln.n; j++) { const v = ln.o + j * 4, [x, y] = toXY(rivers.verts[v + 1], rivers.verts[v]); j ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      ctx.stroke();
     }
   }
   const solved = vpSolved(CUR.def.id);
   for (const p of CUR.peaks) {
     if (!p.visible || p.d > range * 1.02) continue;
-    const [x, y] = toXY(p.lat, p.lon), mk = marksOf(p.name);
-    ctx.fillStyle = (mk.fav || mk.flag) ? '#f5a623' : solved[p.name] !== undefined ? '#ffd38a' : '#ffffff';
+    const [x, y] = toXY(p.lat, p.lon), mk = marksOf(p.name), done = solved[p.name] !== undefined;
+    ctx.fillStyle = `rgba(${ink},${done ? 1 : .6})`;
     ctx.beginPath(); ctx.moveTo(x, y - 4 * u); ctx.lineTo(x - 3.5 * u, y + 3 * u); ctx.lineTo(x + 3.5 * u, y + 3 * u); ctx.fill();
+    if (mk.fav || mk.flag) { ctx.strokeStyle = `rgba(${ink},.9)`; ctx.lineWidth = u; ctx.beginPath(); ctx.arc(x, y, 6.5 * u, 0, TAU); ctx.stroke(); }
   }
   ctx.restore();
-  ctx.fillStyle = '#f5a623'; ctx.beginPath(); ctx.arc(R, R, 3.5 * u, 0, TAU); ctx.fill();
-  ctx.fillStyle = '#c9ced6'; ctx.font = `600 ${11 * u}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.fillText('N', R, 15 * u);
-  ctx.font = `${10 * u}px system-ui, sans-serif`; ctx.fillText('45 km', R, s - 10 * u);
+  ctx.fillStyle = `rgb(${ink})`; ctx.beginPath(); ctx.arc(R, R, 3.2 * u, 0, TAU); ctx.fill();
+  ctx.fillStyle = `rgba(${ink},.85)`; ctx.font = `600 ${11 * u}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.fillText('N', R, 15 * u);
+  ctx.fillStyle = `rgba(${ink},.55)`; ctx.font = `${10 * u}px system-ui, sans-serif`; ctx.fillText('45 km', R, s - 10 * u);
 }
-$('rose').onclick = () => { miniOn = !miniOn; mini.classList.toggle('off', !miniOn); $('rose').setAttribute('aria-label', miniOn ? 'Hide the mini map' : 'Show the mini map'); if (miniOn) drawMini(); };
+$('mini-btn').onclick = () => {
+  miniOn = !miniOn; mini.classList.toggle('off', !miniOn); $('mini-btn').classList.toggle('on', miniOn);
+  $('mini-btn').setAttribute('aria-label', miniOn ? 'Hide the mini map' : 'Show the mini map'); if (miniOn) drawMini();
+};
+$('rose').onclick = () => { if (CUR && !flying) animateTo(0, view.pitch, 1300); };
 function drawRose() {
   const deg = wrap(view.heading) * 180 / Math.PI;
   $('rose-needle').setAttribute('transform', `rotate(${-deg})`);
@@ -1302,53 +1405,132 @@ function updateFlyUI() {
   $('pl-elev').textContent = `${fmt(curEye())} m`;
 }
 function flyStep(dir) {
-  if (flying || !CUR || !workers.length) return;
+  if (flying || intro || !CUR || !workers.length) return;
   const idx = Math.max(0, Math.min(FLY.length - 1, flyIdx + dir)); if (idx === flyIdx) return;
   const from = eyeOff, to = FLY[idx];
   // freeze the current picture as frame 0
   const snap = document.createElement('canvas'); snap.width = pano.width; snap.height = pano.height; snap.getContext('2d').drawImage(pano, 0, 0);
   flyIdx = idx;
-  const g = newGen();
-  const { W, H } = cssSize(), cssPpr = W / view.hfov, s = 0.5, ppr = cssPpr * s;
-  const nF = reduced ? 1 : 7, T = themeRGB(PREFS.theme);
+  const gid = genId + 1;                                   // the generation newGen() is about to start
+  const { W, H } = cssSize(), cssPpr = W / view.hfov, s = Math.min(0.42, 560 / W), ppr = cssPpr * s;
+  const nF = reduced ? 1 : 26, T = themeRGB(PREFS.theme);
   const x0 = Math.floor(wrap(view.heading - (W / 2) / cssPpr) * ppr);
-  flying = { gen: g.id, from, to, nF, frames: new Array(nF).fill(null), got: 0, snap, s, ppr, x0, altTop: view.pitch + (H / 2) / cssPpr,
-    heading: view.heading, pitch: view.pitch, hfov: view.hfov, playing: false, t0: 0, dur: reduced ? 0 : 2300 + Math.abs(to - from) * 0.12 };
+  flying = { gen: gid, from, to, nF, frames: new Array(nF).fill(null), ready: 0, snap, s, x0, altTop: view.pitch + (H / 2) / cssPpr,
+    tStart: performance.now(), playing: false, t0: 0, last: 0, pos: 0, endT: 0, dur: reduced ? 0 : 2400 + Math.abs(to - from) * 0.12 };
   for (let i = 0; i < nF; i++) {
     const e = easeIO((i + 1) / nF), eye = CUR.eye + from + (to - from) * e;
-    workers[i % workers.length].postMessage({ cmd: 'strip', kind: 'frame', gen: g.id, idx: i, prio: -1000 + i, x0: flying.x0, w: Math.ceil(W * s) + 2,
-      H: Math.ceil(H * s), ppr, altTop: flying.altTop, eye, maxD: PREFS.vis * 1000, T, contours: false, k: 0.008, minStep: 20 });
+    workers[i % workers.length].postMessage({ cmd: 'strip', kind: 'frame', gen: gid, idx: i, prio: -1000 + i, x0, w: Math.ceil(W * s) + 2,
+      H: Math.ceil(H * s), ppr, altTop: flying.altTop, eye, maxD: PREFS.vis * 1000, T, contours: PREFS.contours, k: 0.0075, minStep: 18 });
   }
+  newGen();                                                // full-quality strips queue behind the film frames
   closeGuess(); updateFlyUI();
 }
 async function onFlyFrame(m) {
   const f = flying; if (!f || m.gen !== f.gen) return;
   f.frames[m.idx] = await createImageBitmap(new ImageData(new Uint8ClampedArray(m.img), m.w, m.H));
-  if (++f.got === f.nF) { f.playing = true; f.t0 = performance.now(); needDraw = true; }
+  (f.log || (f.log = [])).push(Math.round(performance.now() - f.tStart));
+  while (f.ready < f.nF && f.frames[f.ready]) f.ready++;
+  if (!f.playing && f.ready >= Math.min(f.nF, 4)) { f.playing = true; f.last = performance.now(); needDraw = true; }
 }
+// the film clock only runs while the next frame exists, so a slow frame pauses the climb instead of jumping it
 function stepFly(t) {
   const f = flying; if (!f || !f.playing) return;
-  const u = f.dur ? Math.max(0, Math.min(1, (t - f.t0) / f.dur)) : 1;
-  eyeOff = f.from + (f.to - f.from) * easeIO(u);
-  f.u = u; needDraw = true;
-  if (u >= 1 && (visibleReady(G) || t - f.t0 > f.dur + 2500)) {
+  const dt = Math.max(0, t - f.last); f.last = t;
+  if (!f.endT) {
+    const rate = f.dur ? f.nF / f.dur : Infinity;
+    f.pos = Math.min(f.ready, f.nF, f.pos + dt * rate);
+    eyeOff = f.from + (f.to - f.from) * (f.pos / f.nF >= 1 ? 1 : easeIO(f.pos / f.nF));
+    if (f.pos >= f.nF && G && (visibleReady(G) || (f.wait = (f.wait || 0) + dt) > 2500)) f.endT = t;
+  } else if (t - f.endT > 320) {
     for (const b of f.frames) b && b.close && b.close();
-    eyeOff = f.to; flying = null; updateFlyUI(); needDraw = true;
+    eyeOff = f.to; flying = null; updateFlyUI();
   }
+  needDraw = true;
   $('pl-elev').textContent = `${fmt(curEye())} m`;
 }
 function drawFly(W, H, dpr) {
-  const f = flying, u = f.u || 0, pos = u * f.nF;          // 0 = snapshot, 1..nF = frames
+  const f = flying, pos = f.pos;                          // 0 = snapshot, 1..nF = frames
   const i = Math.min(f.nF, Math.floor(pos)), a = pos - i;
-  const img = (k) => k === 0 ? f.snap : f.frames[k - 1];
   const draw = (k, alpha) => {
     if (alpha <= 0) return;
     pctx.globalAlpha = alpha;
     if (k === 0) pctx.drawImage(f.snap, 0, 0, pano.width, pano.height);
-    else { const b = img(k); if (!b) return; pctx.drawImage(b, 0, 0, b.width / f.s * dpr, b.height / f.s * dpr); }
+    else { const b = f.frames[k - 1]; if (!b) return; pctx.drawImage(b, 0, 0, b.width / f.s * dpr, b.height / f.s * dpr); }
   };
   draw(i, 1); if (i < f.nF) draw(i + 1, a);
+  if (f.endT) { pctx.globalAlpha = Math.min(1, (performance.now() - f.endT) / 320); if (G) drawGen(G, W, H, W / view.hfov, dpr); }
   pctx.globalAlpha = 1;
+}
+
+// =====================================================================================
+//  Fly-in: the 3D map lands on the viewpoint at eye level (matching heading, pitch and field of
+//  view) and turns grey; then the panorama's ranges sweep in over it, nearest first, the sky last,
+//  and the map fades away underneath. Going back plays the same move in reverse.
+// =====================================================================================
+const waitFor = (fn, ms) => new Promise((res) => { const t0 = performance.now(); const chk = () => (fn() || performance.now() - t0 > ms) ? res() : requestAnimationFrame(chk); chk(); });
+function mapHfov() {
+  const { W, H } = cssSize(), v = (map && map.getVerticalFieldOfView ? map.getVerticalFieldOfView() : 36.87) * Math.PI / 180;
+  return 2 * Math.atan(Math.tan(v / 2) * W / H);
+}
+function eyeCamera(heading, pitch) {
+  return map.calculateCameraOptionsFromCameraLngLatAltRotation([CUR.lon, CUR.lat], curEye(), heading * 180 / Math.PI, Math.max(30, Math.min(89, 90 + pitch * 180 / Math.PI)), 0);
+}
+async function buildRevealFrames(K) {
+  const { W, H } = cssSize(), q = Math.min(1.25, window.devicePixelRatio || 1), cw = Math.round(W * q), ch = Math.round(H * q);
+  const off = document.createElement('canvas'); off.width = cw; off.height = ch;
+  const octx = off.getContext('2d'); octx.imageSmoothingEnabled = true;
+  if (Gprev) drawGen(Gprev, W, H, W / view.hfov, q, octx);
+  drawGen(G, W, H, W / view.hfov, q, octx);
+  const base = octx.getImageData(0, 0, cw, ch).data, p = W / view.hfov, dpx = new Float32Array(cw * ch);
+  for (let y = 0; y < ch; y++) {
+    const alt = view.pitch + (H / 2 - (y + 0.5) / q) / p;
+    for (let x = 0; x < cw; x++) dpx[y * cw + x] = depthAtAng(G, view.heading + ((x + 0.5) / q - W / 2) / p, alt);
+  }
+  const out = [];
+  for (let k = 1; k <= K; k++) {
+    const R = k === K ? Infinity : G.maxD * Math.pow(k / K, 2.2), a = new Uint8ClampedArray(base);
+    for (let i = 0; i < cw * ch; i++) {
+      const d = dpx[i];
+      const al = d === d && d !== Infinity ? (R === Infinity ? 1 : 1 - Math.max(0, Math.min(1, (d - R * 0.75) / (R * 0.25)))) : (k === K ? 1 : 0);
+      a[i * 4 + 3] = al * 255;
+    }
+    out.push(await createImageBitmap(new ImageData(a, cw, ch)));
+  }
+  return out;
+}
+function drawIntro(W, H) {
+  pctx.clearRect(0, 0, pano.width, pano.height);
+  const f = intro; if (!f || f.stage !== 'sweep' || !f.frames) return;
+  const u = f.dur ? Math.min(1, (performance.now() - f.t0) / f.dur) : 1, K = f.frames.length, pos = easeIO(u) * K;
+  const i = Math.min(K, Math.floor(pos)), a = pos - i;
+  const draw = (k, al) => { if (k < 1 || al <= 0) return; pctx.globalAlpha = al; pctx.drawImage(f.frames[k - 1], 0, 0, pano.width, pano.height); };
+  draw(i, 1); if (i < K) draw(i + 1, a);
+  pctx.globalAlpha = 1;
+  if (u >= 1) f.done = true;
+}
+async function playIntro() {
+  const play = $('play'), home = $('home');
+  intro = { stage: 'wait' };
+  play.classList.add('intro'); play.classList.remove('fade');
+  resizeCanvases();
+  view.pitch = -0.035;                                    // land looking just below the horizon, like the map can
+  view.hfov = fovTarget = Math.max(0.7, Math.min(1.75, mapHfov()));
+  newGen();
+  await waitFor(() => G && visibleReady(G), 6000);
+  if (!reduced) {
+    home.classList.add('grade');
+    await new Promise((res) => { map.once('moveend', res); map.easeTo({ ...eyeCamera(view.heading, view.pitch), duration: 2700, easing: easeIO }); });
+  }
+  intro.frames = await buildRevealFrames(9);
+  intro.stage = 'sweep'; intro.t0 = performance.now(); intro.dur = reduced ? 0 : 2000;
+  needDraw = true;
+  await waitFor(() => !intro || intro.done, 6000);
+  if (!intro) return;
+  home.classList.add('fade');
+  for (const b of intro.frames) b.close && b.close();
+  intro = null; play.classList.remove('intro'); needDraw = true;
+  setTimeout(() => { home.classList.remove('grade'); home.classList.add('gone'); }, 800);
+  animateTo(view.heading, CUR.startPitch, 1600);
 }
 
 // =====================================================================================
@@ -1357,7 +1539,7 @@ function drawFly(W, H, dpr) {
 const pointers = new Map();
 let dragStart = null, pinchStart = null, vel = 0, lastMoveT = 0, coasting = false;
 stage.addEventListener('pointerdown', (e) => {
-  if (!CUR || flying) return;
+  if (!CUR || flying || intro) return;
   stage.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (pointers.size === 1) { dragStart = { x: e.clientX, y: e.clientY, h: view.heading, p: view.pitch, moved: false }; vel = 0; coasting = false; lastMoveT = performance.now(); }
@@ -1609,8 +1791,10 @@ async function enterViewpoint(def) {
     const lvl = levels.findIndex(l => l.z === 10);
     const rv = await new Promise((res) => { w0._riv = res; w0.postMessage({ cmd: 'rivers', level: lvl, radius: 48000, threshold: 450 }); });
     CUR = { def, ...vp, riverT: 450 };
-    rivers = { segs: new Float32Array(rv.segs), ang: null, n: 0, vis: null, buckets: null, anchors: [], tagEls: [] };
-    addDetailedRiversToMap(def.id, rivers.segs);
+    const lineArr = new Int32Array(rv.lines), verts = new Float32Array(rv.verts), lines = [];
+    for (let i = 0; i < lineArr.length; i += 2) { let a = 0; for (let j = 0; j < lineArr[i + 1]; j++) a = Math.max(a, verts[(lineArr[i] + j) * 4 + 3]); lines.push({ o: lineArr[i], n: lineArr[i + 1], acc: a }); }
+    rivers = { verts, lines, ang: null, nv: 0, vis: null, buckets: null, anchors: [], tagEls: [] };
+    addDetailedRiversToMap(def.id, rivers);
     flyIdx = 0; eyeOff = 0; flying = null; selPeak = null; infoPeak = null;
     // initial view: face the main peak
     const main = vp.peaks.find(p => p.name === def.main && p.visible) || vp.peaks.find(p => p.visible) || vp.peaks[0];
@@ -1618,6 +1802,7 @@ async function enterViewpoint(def) {
     view.hfov = fovTarget = (W < 640 ? 50 : 62) * Math.PI / 180;
     view.heading = main.az;
     view.pitch = Math.max(0.0, Math.min(0.25, Math.atan2(main.hs - main.d * main.d * CURV - vp.eye, main.d) * 0.6));
+    CUR.startPitch = view.pitch;
     $('pl-name').textContent = def.name;
     buildLabelEls(); updateProgress(); updateFlyUI();
     hideLoader();
@@ -1632,6 +1817,7 @@ async function enterViewpoint(def) {
 function showPlay() {
   $('veil').style.transition = 'none'; $('veil').style.opacity = '1';
   $('home').classList.add('fade'); $('play').classList.remove('fade');
+  setTimeout(() => $('home').classList.add('gone'), 750);
   resizeCanvases();
   void $('veil').offsetWidth; $('veil').style.transition = '';
   newGen(); viewMoved();
@@ -1644,13 +1830,25 @@ function resizeCanvases() {
   const mw = mini.clientWidth || 168; mini.width = Math.round(mw * dpr); mini.height = Math.round(mw * dpr);
 }
 function goHome(selectNext) {
-  $('play').classList.add('fade'); $('home').classList.remove('fade');
   closeGuess(); closeTune(); hideInfo();
   if (scopeOn) $('scope-btn').click();
-  flying = null; stopWorkers();
+  flying = null; intro = null;
+  const home = $('home'), play = $('play'), back = map && CUR && !reduced;
+  if (back) {
+    // put the map exactly where the panorama is looking, grey, then let the panorama dissolve into it
+    home.classList.remove('gone'); home.classList.add('instant', 'grade'); home.classList.remove('fade');
+    map.jumpTo(eyeCamera(view.heading, view.pitch));
+    void home.offsetWidth; home.classList.remove('instant');
+  } else { home.classList.remove('gone'); home.classList.remove('fade'); }
+  play.classList.add('fade');
   refreshHome();
-  if (map && CUR) map.flyTo({ center: [CUR.def.lon, CUR.def.lat], zoom: 6.4, pitch: 30, bearing: 0, duration: reduced ? 0 : 2600 });
-  if (selectNext) setTimeout(() => selectVp(selectNext), reduced ? 0 : 1400);
+  const v = CUR && CUR.def;
+  setTimeout(() => {
+    stopWorkers();
+    home.classList.remove('grade');
+    if (map && v) map.flyTo({ center: [v.lon, v.lat], zoom: 6.4, pitch: 30, bearing: 0, duration: reduced ? 0 : 3400, curve: 1.4, easing: easeIO });
+    if (selectNext) setTimeout(() => selectVp(selectNext), reduced ? 0 : 1800);
+  }, back ? 750 : 0);
 }
 $('to-map').onclick = () => goHome();
 
@@ -1670,6 +1868,7 @@ function tick(t) {
       viewMoved();
     }
     if (flying) stepFly(t);
+    if (intro && intro.stage === 'sweep') needDraw = true;
     if (needDraw) {
       needDraw = false;
       drawPano(); updateLabels(); drawCompass(); drawRose(); drawMini();
@@ -1739,16 +1938,13 @@ $('vp-go').onclick = async () => {
     map.flyTo({ center: [v.lon, v.lat], zoom: 12.6, pitch: 76, bearing: az * 180 / Math.PI, duration: 6500, curve: 1.3 });
   });
   const ok = await Promise.all([enterViewpoint(v), fly]).then(r => r[0]);
-  if (ok) showPlay();
+  if (ok) { if (map) playIntro(); else showPlay(); }
 };
 
-function addDetailedRiversToMap(id, segs) {
+function addDetailedRiversToMap(id, rv) {
   if (!map || !map.getSource('rivers-detail')) return;
-  const feats = [];
-  for (let i = 0; i < segs.length; i += 7) {
-    feats.push({ type: 'Feature', properties: { w: Math.log10(segs[i + 6] / 450 + 1) }, geometry: { type: 'LineString', coordinates: [[segs[i], segs[i + 1]], [segs[i + 3], segs[i + 4]]] } });
-  }
-  detailFeatures[id] = feats;
+  detailFeatures[id] = rv.lines.map(ln => ({ type: 'Feature', properties: { w: Math.log10(ln.acc / 450 + 1) },
+    geometry: { type: 'LineString', coordinates: Array.from({ length: ln.n }, (_, j) => [rv.verts[(ln.o + j) * 4], rv.verts[(ln.o + j) * 4 + 1]]) } }));
   map.getSource('rivers-detail').setData({ type: 'FeatureCollection', features: Object.values(detailFeatures).flat() });
 }
 const detailFeatures = {};
@@ -1773,14 +1969,14 @@ function initMap() {
           'hillshade-highlight-color': ['#ffffff', '#f0f6ff', '#ffffff', '#f6f9ff'],
           'hillshade-shadow-color': ['#06090f', '#0a0f18', '#06090f', '#0b1019'], 'hillshade-exaggeration': 0.6 } },
         { id: 'rivers', type: 'line', source: 'rivers', paint: { 'line-color': '#6ec3ff', 'line-opacity': 0.85, 'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1, 8, 2.2] } },
-        { id: 'rivers-detail', type: 'line', source: 'rivers-detail', minzoom: 7, paint: { 'line-color': '#6ec3ff', 'line-opacity': 0.8,
+        { id: 'rivers-detail', type: 'line', source: 'rivers-detail', minzoom: 7, layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#6ec3ff', 'line-opacity': 0.8,
           'line-width': ['interpolate', ['linear'], ['zoom'], 8, ['*', 0.7, ['+', 0.4, ['get', 'w']]], 13, ['*', 2.2, ['+', 0.4, ['get', 'w']]]] } },
       ],
-      terrain: { source: 'dem', exaggeration: 1.25 },
+      terrain: { source: 'dem', exaggeration: 1 },
       sky: { 'sky-color': '#050a14', 'horizon-color': '#24456b', 'fog-color': '#1b2a3d', 'sky-horizon-blend': 0.7, 'horizon-fog-blend': 0.6, 'fog-ground-blend': 0.8,
         'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 1, 10, 1, 13, 0] },
     },
-    center: [83.2, 30.4], zoom: 4.7, pitch: 20, bearing: 0, maxPitch: 82,
+    center: [83.2, 30.4], zoom: 4.7, pitch: 20, bearing: 0, maxPitch: 95,
     maxBounds: [[66, 20], [102, 41]], attributionControl: { compact: true },
   });
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');

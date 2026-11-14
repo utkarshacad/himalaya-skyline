@@ -91,11 +91,28 @@ From the research and suggestions, he picked:
   - the mini-map moved behind the compass rose.
 - Animation taste, as far as known: cinematic and smooth (eased camera, momentum, fly-in and fly-up). Terrain Travle's playful layer (sparks, mascot) has **not** been brought into Skyline; ask before adding it.
 
+### Round 8: feedback on renderer v2 (14 November 2026)
+
+He asked for:
+1. smoother rivers;
+2. a fly-in that merges into the panorama instead of feeling like a separate game mode (he chose **both** eye-level landing and ranges sweeping in);
+3. and 8. **pink accents like PeakFinder** everywhere instead of yellow;
+4. overlap fixes (waiting on his screenshot);
+5. a fly-up that isn't laggy;
+6. the compass to snap to true north, a separate mini-map button, and a **greyscale** mini-map;
+7. a light theme with stronger contrast;
+9. more visible and denser contours, plus a shaded look.
+
+All but 4 were done in v2.1 (see `technical-design.md`).
+
 ## Things he has rejected or disliked
 
 - The first prototype's look: MapLibre colour ramp, editorial panel.
 - **Any always-visible panel that covers the map.** Keep the chrome thin and out of the way. (v1's permanent mini-map broke this; v2 hides it behind the compass rose.)
 - **Lag.** Panning or loading that stutters, as in Google Earth.
+- Yellow or orange accents. Use PeakFinder pink (`#ff3b77` dark, `#e0245e` light).
+- A pale, washed-out light theme.
+- Rivers with sharp, jagged edges.
 - From his other project (UP Travle), the topographic survey map aesthetic. It was rejected there, so avoid it here too.
 
 ## Corrections made along the way
