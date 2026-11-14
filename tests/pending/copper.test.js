@@ -15,7 +15,7 @@ H.run('copper: the accent is copper in both themes, no pink anywhere', async (ke
     await H.enter(page, 'kausani');
     // a selected peak label and an active round button use the accent
     const sel = await page.evaluate(() => {
-      const b = document.querySelector('.rb'); b.classList.add('on');
+      const b = document.querySelector('.rb'); b.style.transition = 'none'; b.classList.add('on');
       const c = getComputedStyle(b).backgroundColor; b.classList.remove('on'); return c;
     });
     H.check(sel === 'rgb(184, 115, 74)', `${theme}: an active round button is copper (${sel})`);
