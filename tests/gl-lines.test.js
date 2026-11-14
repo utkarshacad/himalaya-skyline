@@ -11,7 +11,7 @@ const frames = async (page, n, fn) => { for (let k = 0; k < n; k++) await page.e
 const counters = (page) => page.evaluate(() => { const s = window.__game.stats(); return [s.flowTraces, s.lineUploads, s.meshBuilds].join('/'); });
 
 H.run('gl-lines: flow lines on the GPU', async (keep) => {
-  let { page, browser, errors } = await H.open({ theme: 'dark', noMap: true });
+  let { page, browser, errors } = await H.open({ theme: 'dark', noMap: true, lines: true });
   keep(browser);
   // progressive first visit: terrain is up while lines are still arriving
   await H.enter(page, 'pangarchulla'); await quiet(page);
@@ -102,7 +102,7 @@ H.run('gl-lines: flow lines on the GPU', async (keep) => {
   await browser.close();
 
   // no half-float render targets: lines accumulate in 8 bits
-  ({ page, browser, errors } = await H.open({ theme: 'dark', noMap: true, init: () => {
+  ({ page, browser, errors } = await H.open({ theme: 'dark', noMap: true, lines: true, init: () => {
     const g = WebGL2RenderingContext.prototype.getExtension;
     WebGL2RenderingContext.prototype.getExtension = function (n) { return /color_buffer_(half_)?float/i.test(n) ? null : g.call(this, n); };
   } }));
@@ -117,7 +117,7 @@ H.run('gl-lines: flow lines on the GPU', async (keep) => {
   await browser.close();
 
   // the accumulation target can't be built at all: no lines, terrain still drawn
-  ({ page, browser, errors } = await H.open({ theme: 'dark', noMap: true, init: () => {
+  ({ page, browser, errors } = await H.open({ theme: 'dark', noMap: true, lines: true, init: () => {
     const c = WebGL2RenderingContext.prototype.checkFramebufferStatus;
     WebGL2RenderingContext.prototype.checkFramebufferStatus = function (t) {
       const two = this.getFramebufferAttachmentParameter(t, this.COLOR_ATTACHMENT1, this.FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);

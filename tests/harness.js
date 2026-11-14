@@ -25,7 +25,7 @@ function serve() {
 
 const LAUNCH_ARGS = ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-webgl'];
 
-// open({ theme, viewport, noWebGL2, noMap, dpr, browser, context, blockTiles, init })  init: a function run before the page's scripts
+// open({ theme, viewport, noWebGL2, noMap, dpr, browser, context, blockTiles, init, lines })  lines: keep flow lines drawn  init: a function run before the page's scripts
 // noMap: MapLibre fails to load, so only the panorama's own tile fetches show up in `requests` → { page, browser, context, errors, requests }
 async function open(opts = {}) {
   const url = await serve();
@@ -53,6 +53,7 @@ async function open(opts = {}) {
   if (opts.init) await page.addInitScript(opts.init);
   await page.goto(url + 'index.html');
   await page.waitForFunction(() => !!window.__game);
+  page.__lines = !!opts.lines;
   return { page, browser, context, errors, requests };
 }
 
@@ -66,6 +67,8 @@ async function enter(page, id, timeout = 90000) {
   }, id);
   if (!ok) throw new Error('enterViewpoint failed for ' + id);
   await page.waitForFunction(() => window.__game.ready(), null, { timeout, polling: 200 });
+  // software GL draws flow lines slowly: tests that don't look at them switch them off (open({ lines: true }) keeps them)
+  if (!page.__lines) await page.evaluate(() => window.__game.setArt({ flow: false }));
 }
 
 async function shot(page, name) {
