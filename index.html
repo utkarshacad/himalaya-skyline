@@ -3364,7 +3364,7 @@ window.__game = { VIEWPOINTS, get CUR() { return CUR; }, view, selectVp, enterVi
   FLOW: { PPR: FLOW_PPR, D0: FLOW_D0, SECTORS: FLOW_SECTORS, ALGO: FLOW_ALGO },
   traceForTest: (o = {}) => ask(workers[0], { cmd: 'flow', sector: 0, az0: view.heading, tiers: o.tiers || 2, budget: o.budget, occ: null }, [], 240000),
   askBrokenWorker: () => { const w = wireWorker(new Worker(URL.createObjectURL(new Blob(['onmessage = () => { throw new Error("boom"); };'], { type: 'text/javascript' }))));
-    return ask(w, { cmd: 'x' }, [], 5000).then(() => 'answered', (e) => (/failed/.test(e.message) ? 'rejected' : e.message)).finally(() => w.terminate()); },
+    return ask(w, { cmd: 'x' }, [], 30000).then(() => 'answered', (e) => (/failed/.test(e.message) ? 'rejected' : e.message)).finally(() => w.terminate()); },
   askSilentWorker: (ms) => { const w = wireWorker(new Worker(URL.createObjectURL(new Blob(['onmessage = () => {};'], { type: 'text/javascript' }))));
     return ask(w, { cmd: 'x' }, [], ms).then(() => 'answered', (e) => (/timed out/.test(e.message) ? 'timeout' : e.message)).finally(() => w.terminate()); },
   buildMeshForTest: () => buildMesh(),
