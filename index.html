@@ -1022,6 +1022,7 @@ void main() {
   vec3 c = texelFetch(uCol, p, 0).rgb;
   float a = max(crest(p), 0.3 * crest(p + ivec2(0, 1)));     // 1 px line plus a fainter pixel under it
   c = mix(c, uLine, clamp(a * uEdgeK, 0.0, 1.0));
+  c = min(c, vec3(0.972));                               // never pure white
   // fly-in sweep: ranges appear nearest first out to uSweepR, the sky last (uSweepR < 0: no sweep)
   float d = dist(p), al = d > 1e8 ? uSkyAlpha : (uSweepR < 0.0 ? 1.0 : 1.0 - smoothstep(0.75 * uSweepR, uSweepR + 1.0, d));
   o = vec4(c * al, al);
@@ -1501,9 +1502,10 @@ const GL_THEMES = {
   dark: { skyTop: '#0b0d11', skyHor: '#2b313a', near: '#0f1114', far: '#2a2f37', glow: '#8d939c', deep: '#07080a', mist: '#3a414b',
           glowK: .18, deepK: .3, sun: 1, curvK: .55, haze: .0, mistK: 1, mistLo: 120, mistHi: 1100, line: '#ffffff', skyA: .58, ridgeA: .55,
           snow: '#9aa2ad', snowK: .5, snowLine: 4900 },
-  light: { skyTop: '#f6f3ec', skyHor: '#ece8de', near: '#8f8b84', far: '#ddd8cd', glow: '#f4f1ea', deep: '#4a4741', mist: '#e9e5db',
-          glowK: .45, deepK: .35, sun: 1, curvK: .5, haze: .3, mistK: .8, mistLo: 120, mistHi: 1100, line: '#0d0e10', skyA: .7, ridgeA: .6,
-          snow: '#f4f1ea', snowK: .2, snowLine: 4900 },
+  // Ink & Mist: warm paper, ink-wash ranges that lighten with distance, paper-coloured mist in the valleys
+  light: { skyTop: '#f6f3ec', skyHor: '#ece8de', near: '#4b4844', far: '#d8d3c8', glow: '#bcb7ad', deep: '#2f2d2a', mist: '#e6e2d8',
+          glowK: .4, deepK: .55, sun: 1, curvK: .5, haze: .25, mistK: 1.15, mistLo: 120, mistHi: 1100, line: '#1d1c1a', skyA: .8, ridgeA: .7,
+          snow: '#d8d4ca', snowK: .25, snowLine: 4900 },
 };
 const GLPano = (() => {
   const P = { ok: false, ready: false, canvas: null, gl: null, art: { edges: true, snow: true, flow: true, fine: true, rivers: true } };

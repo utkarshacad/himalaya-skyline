@@ -60,5 +60,36 @@ H.run('gl-art: snow, valley mist', async (keep) => {
   H.check(cdist(kr, MIST_DARK) > 14, `kausani: a ridge top at ${Math.round(k.ridge.h)} m is not mist-coloured (${kr.map(Math.round)})`);
   H.check(cdist(kr, MIST_DARK) - cdist(kv, MIST_DARK) >= 8, `kausani: the valley at ${Math.round(k.valley.h)} m (${kv.map(Math.round)}) is clearly mistier than the ridge`);
   H.check(errors.length === 0, 'kausani: no console errors');
+  await browser.close();
+
+  // ---- Ink & Mist (light): warm paper, ink-wash ranges that lighten with distance, never pure white, no grain
+  ({ page, browser, errors } = await H.open({ theme: 'light', noMap: true }));
+  keep(browser);
+  await H.enter(page, 'pangarchulla'); await quiet(page);
+  await art(page, { edges: true, flow: false, rivers: false });
+  const li = await H.pixels(page), lg = await grid(page);
+  const top = box(li, li.width / 2, 10, 8);
+  H.check(cdist(top, hex('#f6f3ec')) <= 6, `light: top-centre sky ${top.map(Math.round)} ≈ #f6f3ec`);
+  let white = 0, sd = 0; const m0 = lum(top);
+  for (let i = 0; i < li.data.length; i += 4) if (li.data[i] === 255 && li.data[i + 1] === 255 && li.data[i + 2] === 255) white++;
+  for (let j = -8; j < 8; j++) for (let i = -8; i < 8; i++) sd += (lum(li.px(li.width / 2 + i, 10 + j)) - m0) ** 2;
+  sd = Math.sqrt(sd / 256);
+  H.check(white === 0, `light: no pure-white pixel (${white})`);
+  H.check(sd < 0.5, `light: the sky is smooth, no grain (σ ${sd.toFixed(2)})`);
+  await art(page, { edges: false });
+  const lw = await H.pixels(page);
+  const meanL = (cells) => cells.reduce((s, c) => s + lum(lw.px(c.x, c.y)), 0) / Math.max(1, cells.length);
+  const nearL = meanL(lg.filter(c => c.d < 6000 && c.d > 300)), farL = meanL(lg.filter(c => c.d > 60000 && c.d < 100000));
+  H.check(nearL < 110 && farL > 170, `light: ranges lighten with distance (near ${nearL.toFixed(0)} < 110, 60–100 km ${farL.toFixed(0)} > 170)`);
+  const lv = valleyAndRidge(lg, 8000, 30000), lvc = box(lw, lv.valley.x, lv.valley.y, 2);
+  H.check(cdist(lvc, hex('#e6e2d8')) <= 16, `light: the valley floor is paper mist (${lvc.map(Math.round)} vs ${hex('#e6e2d8')})`);
+  const W = li.width, xs = Array.from({ length: 9 }, (_, k) => Math.round(W * (k + 0.5) / 9));
+  const rows = await page.evaluate((xs) => window.__game.glSkylineRows(xs), xs);
+  let inked = 0, seen = 0;
+  xs.forEach((x, k) => { if (rows[k] == null || rows[k] < 6) return; seen++; if (lum(li.px(x, rows[k] - 4)) - Math.min(lum(li.px(x, rows[k])), lum(li.px(x, rows[k] + 1))) >= 40) inked++; });
+  H.check(seen >= 5 && inked === seen, `light: the skyline is an ink line ≥ 40 darker than the sky at ${inked}/${seen} columns`);
+  H.check(errors.length === 0, 'light: no console errors' + (errors.length ? ': ' + errors.slice(0, 3).join(' | ') : ''));
+  await art(page, { edges: true });
+  await H.shot(page, 'stage2-light-wash');
   return browser;
 });
