@@ -1,0 +1,7 @@
+{
+  "name": "himalaya-skyline-tests",
+  "private": true,
+  "description": "Headless Chromium tests for the panorama. Run each *.test.js with node.",
+  "scripts": { "test": "for f in *.test.js; do node $f || exit 1; done" },
+  "devDependencies": { "maplibre-gl": "5.24.0", "pngjs": "^7.0.0" }
+}

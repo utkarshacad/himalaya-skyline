@@ -2301,7 +2301,8 @@ loadMapLibre().then((ok) => {
   else { $('map').innerHTML = '<div class="card" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);right:auto;bottom:auto"><span class="tag">Map unavailable</span><p>The map library didn\'t load, so there\'s no fly-in. Pick a viewpoint from the grid to play.</p></div>'; }
   refreshHome();
 });
-window.__game = { VIEWPOINTS, get CUR() { return CUR; }, view, selectVp, enterViewpoint, showPlay, onViewChanged };
+window.__game = { VIEWPOINTS, get CUR() { return CUR; }, view, selectVp, enterViewpoint, showPlay, onViewChanged,
+  ready: () => !!(CUR && G && visibleReady(G)) };
 </script>
 </body>
 </html>
