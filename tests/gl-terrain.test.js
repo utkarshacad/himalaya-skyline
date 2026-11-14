@@ -40,6 +40,17 @@ H.run('gl-terrain: pangarchulla, dark', async (keep) => {
   H.check(size.w >= 800 && size.h >= 900, `drawing buffer followed the resize (${size.w}×${size.h})`);
   reportAgreement(await skylineAgreement(page), '800×900');
   H.check(errors.length === 0, 'no console errors' + (errors.length ? ': ' + errors.slice(0, 3).join(' | ') : ''));
+
+  // looking down in phone portrait: the ground under the viewer (closer than the first ring) is not painted as sky
+  await page.evaluate(() => { window.__game.view.pitch = -0.45; window.__game.onViewChanged(); });
+  await page.waitForTimeout(800);
+  await page.addStyleTag({ content: '#labels, .corner, #vpbar, #compass, #guess, #info { display: none !important; }' });
+  const dn = await H.pixels(page), bx = dn.width / 2, by = dn.height - 30, bc = dn.px(bx, by);
+  const sk = await page.evaluate((y) => window.__game.skyRGB(y), by);
+  const bd = await page.evaluate(([x, y]) => window.__game.depthAt([[x, y]])[0], [bx, by]);
+  H.check(!bc.every((v, i) => Math.abs(v - sk[i]) <= 8) && Math.max(...bc) < 40, `bottom of the view looking down is dark ground ${bc}, not sky ${sk.map(Math.round)}`);
+  H.check(bd > 0 && bd < 50, `and reads as ground right below (${bd && bd.toFixed(1)} m), not open sky`);
+  H.check(errors.length === 0, 'no console errors looking down');
   await browser.close();
 
   ({ page, browser, errors } = await H.open({ theme: 'dark', noMap: true, dpr: 3 }));

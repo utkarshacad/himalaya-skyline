@@ -3,7 +3,8 @@
 const H = require('./harness');
 
 async function quizOnce(page) {
-  for (const b of await page.$$('#labels .q')) if (await b.isVisible()) {
+  const clickable = (el) => { const r = el.getBoundingClientRect(); return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === el; };
+  for (const b of await page.$$('#labels .q')) if (await b.isVisible() && await b.evaluate(clickable)) {
     await b.click();
     const name = await page.evaluate(() => window.__game.guessTarget && window.__game.guessTarget.name);
     await page.fill('#g-input', name); await page.press('#g-input', 'Enter');
@@ -38,13 +39,34 @@ H.run('fallback: no WebGL2, then context loss', async (keep) => {
   await page.waitForFunction(() => window.__game.ready(), null, { timeout: 10000 });
   H.check(true, `ready again ${((Date.now() - t0) / 1000).toFixed(1)} s after the context came back`);
   H.check(await page.evaluate(() => window.__game.glActive()), 'still on the GL panorama');
-  await page.addStyleTag({ content: '#labels, .corner, #vpbar, #compass { display: none !important; }' });
+  const hideUi = await page.addStyleTag({ content: '#labels, .corner, #vpbar, #compass { display: none !important; }' });
   await page.waitForTimeout(300);
   const img = await H.pixels(page), top = img.px(img.width / 2, 2);
+  await hideUi.evaluate((t) => t.remove());
   H.check(Math.abs(top[0] - 11) <= 6 && Math.abs(top[1] - 13) <= 6 && Math.abs(top[2] - 17) <= 6, `sky drawn again after restore (${top})`);
   const agree = await page.evaluate(async () => { const x = Math.round(innerWidth / 2); return [window.__game.glSkylineRows([x])[0], (await window.__game.cpuSkylineRows([x]))[0]]; });
   H.check(agree[0] != null && Math.abs(agree[0] - agree[1]) <= 3, `terrain drawn again after restore: skyline row ${agree[0]} vs CPU ${agree[1] && agree[1].toFixed(1)}`);
   await H.shot(page, 'stage1-restored');
+  H.check(errors.length === 0, 'no console errors' + (errors.length ? ': ' + errors.slice(0, 3).join(' | ') : ''));
+
+  // lost while the tab is hidden (phone backgrounded): no give-up however long it stays hidden
+  const setVis = (v) => page.evaluate((v) => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => v }); Object.defineProperty(document, 'hidden', { configurable: true, get: () => v === 'hidden' }); document.dispatchEvent(new Event('visibilitychange')); }, v);
+  await setVis('hidden');
+  await page.evaluate(() => window.__lc.loseContext());
+  await page.waitForTimeout(9500);
+  H.check(await page.evaluate(() => window.__game.glOn()), 'no give-up while the tab is hidden (9.5 s)');
+  await setVis('visible');
+  await page.evaluate(() => window.__lc.restoreContext());
+  await page.waitForFunction(() => window.__game.ready(), null, { timeout: 10000 });
+  H.check(await page.evaluate(() => window.__game.glActive()), 'restored on return to the tab, still on the GL panorama');
+
+  // lost and never restored while visible: v2.4 takes over and the game goes on
+  await page.evaluate(() => window.__lc.loseContext());
+  await page.waitForFunction(() => !window.__game.glOn(), null, { timeout: 12000 });
+  await page.waitForFunction(() => window.__game.stats().newGen >= 1 && window.__game.ready(), null, { timeout: 60000 });
+  H.check(true, 'gave up after the context stayed lost: strip renderer drawing');
+  const q2 = await quizOnce(page);
+  H.check(q2 && /^1\//.test(q2.prog), `quiz still works after the hand-over (${q2 && q2.prog})`);
   H.check(errors.length === 0, 'no console errors' + (errors.length ? ': ' + errors.slice(0, 3).join(' | ') : ''));
   return browser;
 });

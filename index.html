@@ -957,12 +957,18 @@ void main() { vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2
 <script id="glsl-sky-fs" type="text/plain">#version 300 es
 precision highp float;
 in vec2 vUv;
-uniform float uPitch, uPpr, uH;
-uniform vec3 uSkyTop, uSkyHor;
+uniform float uPitch, uPpr, uH, uGroundAlt, uFar;
+uniform vec3 uSkyTop, uSkyHor, uNear;
 layout(location = 0) out vec4 oCol;
 layout(location = 1) out vec4 oDep;
 void main() {
   float alt = uPitch + (vUv.y - 0.5) * uH / uPpr;
+  if (alt < uGroundAlt) {                               // the ground right under the viewer, inside the first ring
+    float v = floor(12.0 / uFar * 16777214.0);
+    oCol = vec4(uNear, 1.0);
+    oDep = vec4(floor(v / 65536.0), mod(floor(v / 256.0), 256.0), mod(v, 256.0), 255.0) / 255.0;
+    return;
+  }
   float t = pow(smoothstep(-0.02, 0.26, alt), 0.8);
   oCol = vec4(mix(uSkyHor, uSkyTop, t), 1.0);
   oDep = vec4(1.0);                                     // sky: the largest encoded distance
@@ -1277,12 +1283,13 @@ function onWorker(w, m) {
 let reqId = 0;
 function ask(w, msg, transfer) { return new Promise((res) => { const id = ++reqId; (w._cb || (w._cb = {}))[id] = res; w.postMessage({ ...msg, id }, transfer || []); }); }
 // The polar mesh, built in row bands across the worker pool and stitched here. The index is the same for
-// every viewpoint: a wrapped grid (the last column joins the first).
+// every viewpoint: a wrapped grid (the last column joins the first), column by column, so a frame can draw
+// just the contiguous range of columns in view.
 let meshIndexCache = null;
 function meshIndex(cols, rows) {
   if (meshIndexCache && meshIndexCache.cols === cols && meshIndexCache.rows === rows) return meshIndexCache.index;
   const idx = new Uint32Array(cols * (rows - 1) * 6); let k = 0;
-  for (let r = 0; r < rows - 1; r++) for (let c = 0; c < cols; c++) {
+  for (let c = 0; c < cols; c++) for (let r = 0; r < rows - 1; r++) {
     const a = r * cols + c, b = r * cols + (c + 1) % cols, a2 = a + cols, b2 = b + cols;
     idx[k++] = a; idx[k++] = b; idx[k++] = a2; idx[k++] = b; idx[k++] = b2; idx[k++] = a2;
   }
@@ -1387,7 +1394,7 @@ function drawPano() {
 function drawGL() {
   if (!GLPano.ok || !GLPano.mesh || !CUR) return;
   const { W, H } = cssSize();
-  GLPano.render({ heading: view.heading, pitch: view.pitch, hfov: view.hfov, eye: curEye(), maxD: PREFS.vis * 1000, W, H, dpr: window.devicePixelRatio || 1 });
+  GLPano.render({ heading: view.heading, pitch: view.pitch, hfov: view.hfov, eye: curEye(), ground: CUR.ground, maxD: PREFS.vis * 1000, W, H, dpr: window.devicePixelRatio || 1 });
   stats.glFrames++;
   if (GLPano.ready) revealPano();
 }
@@ -1395,7 +1402,7 @@ function drawGL() {
 function glDepthAtAng(az, alt) {
   const g = GLPano.grid; if (!g) return NaN;
   const v = g.view, x = v.W / 2 + angDiff(az, v.heading) * v.ppr, y = v.H / 2 - (alt - v.pitch) * v.ppr;
-  const i = Math.round(x * g.s / g.step), j = Math.round(y * g.s / g.step);
+  const i = Math.floor(x * g.s * g.sx), j = Math.floor(y * g.s * g.sy);
   if (i < 0 || j < 0 || i >= g.w || j >= g.h) return NaN;
   return g.data[j * g.w + i];
 }
@@ -1501,10 +1508,13 @@ const GLPano = (() => {
       P.ok = true;
       // a lost context (phone backgrounded, GPU reset) is restored in place; if it never comes back the
       // page switches to the v2.4 renderer for the session
-      canvas.addEventListener('webglcontextlost', (e) => {
-        e.preventDefault(); P.ready = false; P.lost = true;
-        clearTimeout(P._giveUp); P._giveUp = setTimeout(() => { if (P.lost) { P.ok = false; P.onGiveUp && P.onGiveUp(); } }, 8000);
-      });
+      // the 8 s only count while the tab is visible: a phone restores a backgrounded tab's context on return
+      const arm = () => {
+        clearTimeout(P._giveUp);
+        if (P.lost && P.ok && document.visibilityState !== 'hidden') P._giveUp = setTimeout(() => { if (P.lost) { P.ok = false; P.onGiveUp && P.onGiveUp(); } }, 8000);
+      };
+      document.addEventListener('visibilitychange', arm);
+      canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); P.ready = false; P.lost = true; arm(); });
       canvas.addEventListener('webglcontextrestored', () => {
         clearTimeout(P._giveUp);
         if (!P.ok) return;                                    // already handed over to v2.4
@@ -1559,7 +1569,8 @@ const GLPano = (() => {
     // sky
     gl.useProgram(progSky.p); const us = progSky.u;
     gl.uniform1f(us.uPitch, v.pitch); gl.uniform1f(us.uPpr, ppr); gl.uniform1f(us.uH, v.H);
-    gl.uniform3fv(us.uSkyTop, rgb(T.skyTop)); gl.uniform3fv(us.uSkyHor, rgb(T.skyHor));
+    gl.uniform3fv(us.uSkyTop, rgb(T.skyTop)); gl.uniform3fv(us.uSkyHor, rgb(T.skyHor)); gl.uniform3fv(us.uNear, rgb(T.near));
+    gl.uniform1f(us.uFar, GL_FAR); gl.uniform1f(us.uGroundAlt, v.ground == null ? -10 : Math.atan2(v.ground - v.eye, 12) + 0.004);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     // terrain
     if (vao && nIdx) {
@@ -1571,7 +1582,16 @@ const GLPano = (() => {
       gl.uniform3fv(u.uFarC, rgb(T.far)); gl.uniform3fv(u.uHor, rgb(T.skyHor));
       gl.uniform1f(u.uGlowK, T.glowK); gl.uniform1f(u.uDeepK, T.deepK); gl.uniform1f(u.uSun, T.sun); gl.uniform1f(u.uCurvK, T.curvK);
       gl.uniform1f(u.uHaze, T.haze); gl.uniform1f(u.uMistK, T.mistK); gl.uniform1f(u.uMistLo, T.mistLo); gl.uniform1f(u.uMistHi, T.mistHi);
-      gl.bindVertexArray(vao); gl.drawElements(gl.TRIANGLES, nIdx, gl.UNSIGNED_INT, 0); gl.bindVertexArray(null);
+      // only the columns in view (x depends on azimuth alone), plus a margin; two ranges across the seam
+      gl.bindVertexArray(vao);
+      const cols = P.mesh.cols, per = nIdx / cols, colW = TAU / cols, half = v.hfov / 2;
+      const c0 = Math.floor((v.heading - half) / colW) - 2, n = Math.floor((v.heading + half) / colW) + 2 - c0 + 1;
+      let drawn = 0;
+      const range = (c, k) => { gl.drawElements(gl.TRIANGLES, k * per, gl.UNSIGNED_INT, c * per * 4); drawn += k * per; };
+      if (n >= cols) range(0, cols);
+      else { const s0 = ((c0 % cols) + cols) % cols; if (s0 + n <= cols) range(s0, n); else { range(s0, cols - s0); range(0, n - (cols - s0)); } }
+      stats.glIndices = drawn; stats.meshIndices = nIdx;
+      gl.bindVertexArray(null);
       gl.disable(gl.DEPTH_TEST);
     }
     // compose to the canvas
@@ -1602,11 +1622,32 @@ const GLPano = (() => {
     return (depthCache = { w: bw, h: bh, s: last.s, data: out, view: last });
   };
   // distance (m) on a grid every `step` buffer pixels, Infinity for sky; read when the view settles
+  // The GPU first shrinks the distance target (nearest sample, 1/step per side), so a settle reads back
+  // 1/16 of the pixels and decodes nothing else. sx, sy: grid cells per buffer pixel.
+  let gFbo = null, gTex = null, gw = 0, gh = 0, gBuf = null;
   P.readDepthGrid = (step = 4) => {
-    const D = P.readDepth(); if (!D) return null;
-    const w = Math.ceil(D.w / step), h = Math.ceil(D.h / step), data = new Float32Array(w * h);
-    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) data[j * w + i] = D.data[Math.min(D.h - 1, j * step) * D.w + Math.min(D.w - 1, i * step)];
-    return (P.grid = { w, h, step, s: D.s, data, view: D.view });
+    if (!last || !fbo || P.lost || gl.isContextLost()) return null;
+    const { bw, bh } = last, w = Math.ceil(bw / step), h = Math.ceil(bh / step);
+    if (!gFbo || gw !== w || gh !== h) {
+      if (gFbo) { gl.deleteFramebuffer(gFbo); gl.deleteTexture(gTex); }
+      gTex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, gTex); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, w, h);
+      gFbo = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, gFbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, gTex, 0);
+      gw = w; gh = h; gBuf = new Uint8Array(w * h * 4);
+    }
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fbo); gl.readBuffer(gl.COLOR_ATTACHMENT1);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, gFbo); gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+    gl.blitFramebuffer(0, 0, bw, bh, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, gFbo); gl.readBuffer(gl.COLOR_ATTACHMENT0);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, gBuf);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    stats.depthReadPixels = w * h;
+    const data = new Float32Array(w * h);
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const k = ((h - 1 - j) * w + i) * 4, e = gBuf[k] * 65536 + gBuf[k + 1] * 256 + gBuf[k + 2];   // row 0 = top
+      data[j * w + i] = e >= 16777215 ? Infinity : e / 16777214 * GL_FAR;
+    }
+    return (P.grid = { w, h, step, s: last.s, sx: w / bw, sy: h / bh, data, view: last });
   };
   P.last = () => last;
   return P;
@@ -2856,12 +2897,13 @@ window.__game = { VIEWPOINTS, get CUR() { return CUR; }, view, selectVp, enterVi
   ready: () => !!(CUR && (GLPano.ok ? GLPano.ready : (G && visibleReady(G)))),
   glActive: () => GLPano.ok && !!GLPano.mesh,
   glSetEdges: (on) => { GLPano.edges = !!on; },
+  glOn: () => GLPano.ok,
   get guessTarget() { return guessTarget; },
   get eyeOff() { return eyeOff; }, get eyeTarget() { return eyeTarget; }, flyTravel, setEyeOffset,
   depthAtCentre: () => depthAtAng(G, view.heading, view.pitch),
   // css pixels whose grid distance lies in [lo, hi] / distances at css pixels, from the depth grid
-  depthPixels: (lo, hi) => { const g = GLPano.readDepthGrid(4), out = []; for (let j = 0; j < g.h; j++) for (let i = 0; i < g.w; i++) { const d = g.data[j * g.w + i]; if (d >= lo && d <= hi) out.push([i * g.step / g.s, j * g.step / g.s]); } return out; },
-  depthAt: (pts) => { const g = GLPano.readDepthGrid(4); return pts.map(([x, y]) => g.data[Math.round(y * g.s / g.step) * g.w + Math.round(x * g.s / g.step)]); },
+  depthPixels: (lo, hi) => { const g = GLPano.readDepthGrid(4), out = []; for (let j = 0; j < g.h; j++) for (let i = 0; i < g.w; i++) { const d = g.data[j * g.w + i]; if (d >= lo && d <= hi) out.push([(i + 0.5) / g.sx / g.s, (j + 0.5) / g.sy / g.s]); } return out; },
+  depthAt: (pts) => { const g = GLPano.readDepthGrid(4); return pts.map(([x, y]) => g.data[Math.min(g.h - 1, Math.floor(y * g.s * g.sy)) * g.w + Math.min(g.w - 1, Math.floor(x * g.s * g.sx))]); },
   skyRGB: (y) => { const T = GL_THEMES[PREFS.theme], { W, H } = cssSize(), alt = view.pitch + (H / 2 - y) / (W / view.hfov);
     const sm = Math.max(0, Math.min(1, (alt + 0.02) / 0.28)), t = Math.pow(sm * sm * (3 - 2 * sm), 0.8), a = hexRGB(T.skyHor), b = hexRGB(T.skyTop);
     return a.map((v, i) => v + (b[i] - v) * t); },
