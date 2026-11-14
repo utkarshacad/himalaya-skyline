@@ -988,7 +988,7 @@ function traceFlowSector(levels, vp, o) {
       const u = cellU(x, y), v = cellV(d); if (u < 0 || u > GW - 1) break;
       if (h < h0 - 350 && near(u, v, id, flowSep(h) * 0.5 * sepK)) break;      // bunch freely near the top, thin out below
       PX[n] = x; PY[n] = y; PH[n] = h; PD[n] = d; n++; hPrev = h;
-      const step = 4 * d / PPR; x -= gx / gm * step; y -= gy / gm * step;
+      const step = 3 * d / PPR; x -= gx / gm * step; y -= gy / gm * step;
     }
     if (n < 6) return 0;
     let len = 0; for (let j = 1; j < n; j++) len += Math.hypot(PX[j] - PX[j - 1], PY[j] - PY[j - 1]);
