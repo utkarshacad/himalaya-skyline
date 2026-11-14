@@ -135,13 +135,19 @@ Also: sharper terrain, with z12 out to 7 km, z11 to 20 km and z10 to 72 km, and 
 
 He sent three frames from the PeakFinder app: an even darker look, with ridges and spurs glowing and no contours. He also said fly-up still lagged and asked what WebGL is. v2.4 adds the curvature glow, the darker palette, per-theme contours (off in dark), and a WebGL depth-warp fly-up. GitHub Pages was still off; he was given the githack link and the steps to turn Pages on.
 
+### Round 12: v3 design and Stage 1 (15 November 2026)
+
+- He asked for the panorama to be "a beautiful art piece": modern, high-tech, PeakFinder at heart, smooth with no lag or blur. Style boards led to the approved targets in `docs/art/`: dark **Summit Noir** (flow lines on the summits) and light **Ink & Mist** (warm paper). He chose a **copper** accent (#b8734a) over pink, glacier blue and sage, and Cormorant Garamond + IBM Plex Mono for type.
+- He chose approach 1: a full **WebGL2 renderer** (spec `docs/superpowers/specs/2026-11-15-webgl-renderer-v3-design.md`), delivered in three stages: GPU core, art, look and feel.
+- **Stage 1 shipped:** the panorama is a polar mesh on the GPU; pan, zoom, visibility and eye height are live uniforms; Summit Noir terrain tone and outlines; tiles cached on the device; a drag track to fly (0–5,000 m, no steps); the fly-in sweep on the GPU; context-loss recovery; v2.4 as the fallback. Flow lines, snow, the full Ink & Mist theme, copper and the new labels come in Stages 2 and 3.
+
 ## Things he has rejected or disliked
 
 - The first prototype's look: MapLibre colour ramp, editorial panel.
 - **Any always-visible panel that covers the map.** Keep the chrome thin and out of the way. (v1's permanent mini-map broke this; v2 hides it behind the compass rose.)
 - **Lag.** Panning or loading that stutters, as in Google Earth.
-- Yellow or orange accents. Use PeakFinder pink (`#ff3b77` dark, `#e0245e` light).
-- A pale, washed-out light theme.
+- Yellow or orange accents, and (since the v3 style boards) pink. The accent is **copper `#b8734a`**, chosen by the owner over glacier blue, sage and no accent.
+- A pale, washed-out light theme. Since v3 the light theme is warm paper "Ink & Mist" (`#f6f3ec`), not white.
 - Rivers with sharp, jagged edges, or rivers that sit on top of the terrain instead of in it.
 - Big chunky controls ("tacky"). Prefer small, minimal, frosted UI with text chips.
 - Dense or jagged contour lines in the dark theme.

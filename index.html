@@ -62,7 +62,7 @@ body[data-theme=light] #home.grade #map { filter: grayscale(1) brightness(1.12) 
 #home .bar, #home .grid-panel, #home .maplibregl-marker, #home .maplibregl-ctrl { transition: opacity .6s ease; }
 #home.grade .bar, #home.grade .grid-panel, #home.grade .card, #home.grade .maplibregl-marker, #home.grade .maplibregl-ctrl { opacity: 0; pointer-events: none; }
 #home.instant, #home.instant #map, #home.instant .bar, #home.instant .grid-panel, #home.instant .maplibregl-marker { transition: none !important; }
-#play.intro #pano { background: transparent; }
+#play.intro #pano, #play.intro #gl { background: transparent; }
 #play .corner, #play #compass, #play #labels, #play #fx { transition: opacity .8s ease; }
 #play.intro .corner, #play.intro #vpbar, #play.intro #compass, #play.intro #labels, #play.intro #fx, #play.intro #veil { opacity: 0 !important; pointer-events: none; }
 body[data-theme=light] #home .bar { background: linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,0)); color: #15171a; }
@@ -242,6 +242,15 @@ body[data-theme=light] .brand span { color: #5b6370; }
 .fly svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 .fly .alt { font: 600 10.5px/1 var(--f-mono); color: #c9ced6; padding: 3px 0; min-height: 11px; }
 .fly .alt.up { color: var(--accent); }
+/* v3: a drag track instead of steps. The eye follows the handle continuously from 0 to +5,000 m. */
+.fly .track { display: none; position: relative; width: 48px; height: 150px; touch-action: none; cursor: ns-resize; outline: none; }
+.fly .track .rail { position: absolute; left: 23px; top: 14px; bottom: 14px; width: 2px; border-radius: 1px; background: rgba(255,255,255,.18); overflow: hidden; }
+.fly .track .rail i { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: var(--accent); }
+.fly .track .handle { position: absolute; left: 15px; width: 18px; height: 18px; margin-top: -9px; top: calc(100% - 14px); border-radius: 50%; background: #f4f5f7; box-shadow: 0 1px 6px rgba(0,0,0,.45); }
+.fly .track:focus-visible .handle { outline: 2px solid var(--accent); outline-offset: 2px; }
+#play.gl .fly .track { display: block; }
+#play.gl .fly button { display: none; }
+#play.gl .fly { padding: 6px 0 8px; }
 
 /* compass rose (top right) */
 #rose svg { width: 30px; height: 30px; transition: none; }
@@ -437,6 +446,7 @@ body[data-theme=light] .brand span { color: #5b6370; }
   <div class="corner c-ml">
     <div class="fly" role="group" aria-label="Fly up">
       <button id="fly-up" aria-label="Fly up" title="Fly up"><svg viewBox="0 0 24 24"><path d="M5 15l7-7 7 7"/></svg></button>
+      <div class="track" id="fly-track" role="slider" tabindex="0" aria-label="Eye height above the viewpoint: drag up to fly" aria-valuemin="0" aria-valuemax="5000" aria-valuenow="0" title="Drag up to fly · double-click to land"><div class="rail"><i id="fly-fill"></i></div><div class="handle" id="fly-handle"></div></div>
       <div class="alt" id="fly-alt"></div>
       <button id="fly-down" aria-label="Fly down" title="Fly down" disabled><svg viewBox="0 0 24 24"><path d="M5 9l7 7 7-7"/></svg></button>
     </div>
@@ -964,7 +974,7 @@ void main() {
 precision highp float;
 in vec2 vUv;
 uniform sampler2D uCol, uDep;
-uniform float uFar, uMaxD, uEdgeK, uSkyA, uRidgeA;
+uniform float uFar, uMaxD, uEdgeK, uSkyA, uRidgeA, uSweepR, uSkyAlpha;
 uniform vec3 uLine;
 out vec4 o;
 float dist(ivec2 p) {
@@ -988,7 +998,10 @@ void main() {
   ivec2 p = ivec2(gl_FragCoord.xy);
   vec3 c = texelFetch(uCol, p, 0).rgb;
   float a = max(crest(p), 0.3 * crest(p + ivec2(0, 1)));     // 1 px line plus a fainter pixel under it
-  o = vec4(mix(c, uLine, clamp(a * uEdgeK, 0.0, 1.0)), 1.0);
+  c = mix(c, uLine, clamp(a * uEdgeK, 0.0, 1.0));
+  // fly-in sweep: ranges appear nearest first out to uSweepR, the sky last (uSweepR < 0: no sweep)
+  float d = dist(p), al = d > 1e8 ? uSkyAlpha : (uSweepR < 0.0 ? 1.0 : 1.0 - smoothstep(0.75 * uSweepR, uSweepR + 1.0, d));
+  o = vec4(c * al, al);
 }
 </script>
 
@@ -1223,6 +1236,12 @@ SAVE.marks = SAVE.marks || {};
 // Fly-up: raise the eye above the viewpoint, PeakFinder's "elevation offset"
 const FLY = [0, 300, 800, 1600, 3000, 5000];
 let flyIdx = 0, eyeOff = 0, flying = null;
+let eyeTarget = 0;                                        // v3: the eye eases toward this (drag-to-fly)
+const EYE_MAX = 5000;
+function setEyeOffset(m) {
+  eyeTarget = Math.max(0, Math.min(EYE_MAX, m));
+  needDraw = true;
+}
 const curEye = () => CUR.eye + eyeOff;
 
 const THEMES = {
@@ -1476,15 +1495,27 @@ const GLPano = (() => {
   P.init = (canvas) => {
     P.canvas = canvas;
     try {
-      gl = canvas.getContext('webgl2', { antialias: false, alpha: false, depth: false, premultipliedAlpha: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
+      gl = canvas.getContext('webgl2', { antialias: false, alpha: true, depth: false, premultipliedAlpha: true, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
       if (!gl) return (P.ok = false);
       P.gl = gl; setup();
       P.ok = true;
+      // a lost context (phone backgrounded, GPU reset) is restored in place; if it never comes back the
+      // page switches to the v2.4 renderer for the session
+      canvas.addEventListener('webglcontextlost', (e) => {
+        e.preventDefault(); P.ready = false; P.lost = true;
+        clearTimeout(P._giveUp); P._giveUp = setTimeout(() => { if (P.lost) { P.ok = false; P.onGiveUp && P.onGiveUp(); } }, 8000);
+      });
+      canvas.addEventListener('webglcontextrestored', () => {
+        clearTimeout(P._giveUp);
+        if (!P.ok) return;                                    // already handed over to v2.4
+        try { setup(); P._bufs = []; P.lost = false; const had = !!P.mesh; P.mesh = null; P.onRestore && P.onRestore(had); }
+        catch (e) { console.warn('WebGL restore failed', e); P.ok = false; P.onGiveUp && P.onGiveUp(); }
+      });
     } catch (e) { console.warn('WebGL2 panorama unavailable', e); P.ok = false; }
     return P.ok;
   };
   P.setMesh = (m) => {
-    P.ready = false; P.mesh = m;
+    P.ready = false; P.mesh = { cols: m.cols, rows: m.rows };   // the arrays live on the GPU only
     if (vao) gl.deleteVertexArray(vao);
     for (const b of P._bufs || []) gl.deleteBuffer(b);
     vao = gl.createVertexArray(); gl.bindVertexArray(vao);
@@ -1550,13 +1581,14 @@ const GLPano = (() => {
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, texDep); gl.uniform1i(ue.uDep, 1);
     gl.uniform1f(ue.uFar, GL_FAR); gl.uniform1f(ue.uMaxD, v.maxD); gl.uniform1f(ue.uEdgeK, P.edges ? 1 : 0);
     gl.uniform1f(ue.uSkyA, T.skyA); gl.uniform1f(ue.uRidgeA, T.ridgeA); gl.uniform3fv(ue.uLine, rgb(T.line));
+    gl.uniform1f(ue.uSweepR, P.sweep == null ? -1 : P.sweep * v.maxD); gl.uniform1f(ue.uSkyAlpha, P.sweep == null ? 1 : P.skyAlpha || 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     last = { ...v, bw, bh, s, ppr }; depthCache = null;
     if (vao && nIdx) P.ready = true;
   };
   // distance (m) at every pixel of the last frame, Infinity for sky; read only when the view settles
   P.readDepth = () => {
-    if (!last || !fbo) return null;
+    if (!last || !fbo || P.lost || gl.isContextLost()) return null;
     if (depthCache) return depthCache;
     const { bw, bh } = last, buf = new Uint8Array(bw * bh * 4);
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.readBuffer(gl.COLOR_ATTACHMENT1);
@@ -1925,7 +1957,17 @@ function drawCompass() {
 //  Fly-up: low-resolution frames at rising heights play as a cross-fading film while
 //  the full-quality panorama for the new height renders behind them
 // =====================================================================================
+function flyTravel() { return Math.max(1, $('fly-track').clientHeight - 28); }
+function updateFlyUIGL() {
+  const f = eyeOff / EYE_MAX, tr = flyTravel();
+  $('fly-handle').style.transform = `translateY(${-f * tr}px)`;
+  $('fly-fill').style.height = (f * 100).toFixed(2) + '%';
+  $('fly-track').setAttribute('aria-valuenow', Math.round(eyeOff));
+  const a = $('fly-alt'); a.textContent = eyeOff >= 1 ? '+' + fmt(eyeOff) : ''; a.classList.toggle('up', eyeOff >= 1);
+  $('pl-elev').textContent = `${fmt(curEye())} m`;
+}
 function updateFlyUI() {
+  if (GLPano.ok) return updateFlyUIGL();
   $('fly-up').disabled = flyIdx >= FLY.length - 1 || !!flying;
   $('fly-down').disabled = flyIdx <= 0 || !!flying;
   const a = $('fly-alt'); a.textContent = FLY[flyIdx] ? '+' + fmt(FLY[flyIdx]) : '';
@@ -2175,7 +2217,38 @@ function drawIntro(W, H) {
   pctx.globalAlpha = 1;
   if (u >= 1) f.done = true;
 }
+function stepIntroGL(t) {
+  const f = intro; if (f.stage !== 'sweep') return;
+  const u = f.dur ? Math.min(1, (t - f.t0) / f.dur) : 1, e = easeIO(u);
+  GLPano.sweep = Math.max(0.002, Math.pow(e, 2.2)); GLPano.skyAlpha = Math.max(0, Math.min(1, (u - 0.8) / 0.2));
+  needDraw = true;
+  if (u >= 1) f.done = true;
+}
+async function playIntroGL() {
+  const play = $('play'), home = $('home');
+  intro = { stage: 'wait', gl: true };
+  GLPano.sweep = 0; GLPano.skyAlpha = 0;                  // fully transparent until the sweep starts
+  play.classList.add('intro'); play.classList.remove('fade');
+  resizeCanvases();
+  view.pitch = -0.035;
+  view.hfov = fovTarget = Math.max(0.7, Math.min(1.75, mapHfov()));
+  needDraw = true;
+  await waitFor(() => GLPano.ready, 6000);
+  if (!reduced) {
+    home.classList.add('grade');
+    await new Promise((res) => { map.once('moveend', res); map.easeTo({ ...eyeCamera(view.heading, view.pitch), duration: 2700, easing: easeIO }); });
+  }
+  if (!intro) return;
+  intro.stage = 'sweep'; intro.t0 = performance.now(); intro.dur = reduced ? 0 : 2000;
+  await waitFor(() => !intro || intro.done, 6000);
+  if (!intro) return;
+  home.classList.add('fade');
+  GLPano.sweep = null; intro = null; play.classList.remove('intro'); needDraw = true; viewMoved();
+  setTimeout(() => { home.classList.remove('grade'); home.classList.add('gone'); }, 800);
+  animateTo(view.heading, CUR.startPitch, 1600);
+}
 async function playIntro() {
+  if (GLPano.ok) return playIntroGL();
   const play = $('play'), home = $('home');
   intro = { stage: 'wait' };
   play.classList.add('intro'); play.classList.remove('fade');
@@ -2210,7 +2283,7 @@ stage.addEventListener('pointerdown', (e) => {
   stage.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (pointers.size === 1) { dragStart = { x: e.clientX, y: e.clientY, h: view.heading, p: view.pitch, moved: false }; vel = 0; coasting = false; lastMoveT = performance.now(); }
-  if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinchStart = { dist: Math.hypot(a.x - b.x, a.y - b.y), hfov: view.hfov }; }
+  if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinchStart = { dist: Math.hypot(a.x - b.x, a.y - b.y), hfov: view.hfov, cy: (a.y + b.y) / 2, eye: eyeTarget, mode: null }; }
   stage.classList.add('dragging');
 });
 stage.addEventListener('pointermove', (e) => {
@@ -2218,8 +2291,11 @@ stage.addEventListener('pointermove', (e) => {
   const prev = pointers.get(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (pointers.size === 2 && pinchStart) {
-    const [a, b] = [...pointers.values()];
-    setFov(pinchStart.hfov * pinchStart.dist / Math.max(20, Math.hypot(a.x - b.x, a.y - b.y)), true);
+    const [a, b] = [...pointers.values()], dist = Math.hypot(a.x - b.x, a.y - b.y), dy = (a.y + b.y) / 2 - pinchStart.cy;
+    // the first clear movement decides: fingers spreading = zoom, both fingers sliding vertically = fly (v3)
+    if (!pinchStart.mode && (Math.abs(dist - pinchStart.dist) > 14 || Math.abs(dy) > 14)) pinchStart.mode = GLPano.ok && Math.abs(dy) > Math.abs(dist - pinchStart.dist) * 1.5 ? 'fly' : 'zoom';
+    if (pinchStart.mode === 'zoom') setFov(pinchStart.hfov * pinchStart.dist / Math.max(20, dist), true);
+    if (pinchStart.mode === 'fly') setEyeOffset(pinchStart.eye - dy * 12);
     return;
   }
   if (!dragStart) return;
@@ -2270,11 +2346,35 @@ window.addEventListener('keydown', (e) => {
   const p = 8 * Math.PI / 180;
   if (e.key === 'ArrowLeft') animateTo(wrap(view.heading - p), view.pitch, 420);
   if (e.key === 'ArrowRight') animateTo(wrap(view.heading + p), view.pitch, 420);
-  if (e.key === 'ArrowUp' && e.shiftKey) flyStep(1);
-  if (e.key === 'ArrowDown' && e.shiftKey) flyStep(-1);
+  if (e.key === 'ArrowUp' && e.shiftKey) { if (GLPano.ok) setEyeOffset(eyeTarget + 250); else flyStep(1); }
+  if (e.key === 'ArrowDown' && e.shiftKey) { if (GLPano.ok) setEyeOffset(eyeTarget - 250); else flyStep(-1); }
   if (e.key === '+' || e.key === '=') setFov(fovTarget / 1.6);
   if (e.key === '-') setFov(fovTarget * 1.6);
 });
+// drag-to-fly: the handle's travel maps linearly to 0–5,000 m; a double-click or double-tap lands
+(() => {
+  const tr = $('fly-track'); let start = null, lastTap = 0;
+  tr.addEventListener('pointerdown', (e) => {
+    if (!CUR || intro) return;
+    e.preventDefault(); e.stopPropagation(); tr.setPointerCapture(e.pointerId);
+    const now = performance.now();
+    if (now - lastTap < 320) { lastTap = 0; start = null; setEyeOffset(0); return; }
+    lastTap = now; start = { y: e.clientY, eye: eyeTarget };
+  });
+  tr.addEventListener('pointermove', (e) => {
+    if (!start) return;
+    if (Math.abs(e.clientY - start.y) > 3) lastTap = 0;
+    setEyeOffset(start.eye + (start.y - e.clientY) / flyTravel() * EYE_MAX);
+  });
+  const end = () => { start = null; };
+  tr.addEventListener('pointerup', end); tr.addEventListener('pointercancel', end);
+  tr.addEventListener('dblclick', (e) => { e.preventDefault(); setEyeOffset(0); });
+  tr.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowUp' || e.key === 'PageUp') { e.preventDefault(); e.stopPropagation(); setEyeOffset(eyeTarget + (e.key === 'PageUp' ? 1000 : 250)); }
+    if (e.key === 'ArrowDown' || e.key === 'PageDown') { e.preventDefault(); e.stopPropagation(); setEyeOffset(eyeTarget - (e.key === 'PageDown' ? 1000 : 250)); }
+    if (e.key === 'Home') { e.preventDefault(); setEyeOffset(0); }
+  });
+})();
 $('fly-up').onclick = () => flyStep(1);
 $('fly-down').onclick = () => flyStep(-1);
 
@@ -2306,6 +2406,17 @@ function applyTheme() {
 }
 document.body.dataset.theme = PREFS.theme;
 if (GLPano.init($('gl'))) { $('play').classList.add('gl'); GLPano.setTheme(PREFS.theme); }
+// context restored: rebuild the mesh from the workers (they keep the terrain), then redraw
+GLPano.onRestore = (had) => {
+  if (!had || !CUR || !workers.length) return;
+  buildMesh().then((m) => { if (GLPano.ok && CUR) { GLPano.setTheme(PREFS.theme); GLPano.setMesh(m); needDraw = true; viewMoved(); } });
+};
+// the context never came back: the v2.4 strip renderer takes over for the rest of the session
+GLPano.onGiveUp = () => {
+  $('play').classList.remove('gl'); eyeOff = eyeTarget = 0; flyIdx = 0; GLPano.sweep = null;
+  if (CUR && workers.length) { resizeCanvases(); newGen(); viewMoved(); }
+  updateFlyUI();
+};
 // =====================================================================================
 //  Game: guessing
 // =====================================================================================
@@ -2467,7 +2578,7 @@ async function enterViewpoint(def) {
     rivers = { verts, lines, ang: null, nv: 0, vis: null, buckets: null, anchors: [], tagEls: [] };
     addDetailedRiversToMap(def.id, rivers);
     if (GLPano.ok) { showLoader('Building the terrain mesh', 1); GLPano.setTheme(PREFS.theme); GLPano.setMesh(await buildMesh()); }
-    flyIdx = 0; eyeOff = 0; flying = null; selPeak = null; infoPeak = null;
+    flyIdx = 0; eyeOff = 0; eyeTarget = 0; flying = null; selPeak = null; infoPeak = null;
     // initial view: face the main peak
     const main = vp.peaks.find(p => p.name === def.main && p.visible) || vp.peaks.find(p => p.visible) || vp.peaks[0];
     const W = stage.clientWidth || innerWidth;
@@ -2505,7 +2616,7 @@ function resizeCanvases() {
 function goHome(selectNext) {
   closeGuess(); closeTune(); hideInfo();
   if (scopeOn) $('scope-btn').click();
-  flying = null; intro = null;
+  flying = null; intro = null; GLPano.sweep = null;
   const home = $('home'), play = $('play'), back = map && CUR && !reduced;
   if (back) {
     // put the map exactly where the panorama is looking, grey, then let the panorama dissolve into it
@@ -2518,6 +2629,7 @@ function goHome(selectNext) {
   const v = CUR && CUR.def;
   setTimeout(() => {
     stopWorkers();
+    if (GLPano.ok) GLPano.clearMesh();
     home.classList.remove('grade');
     if (map && v) map.flyTo({ center: [v.lon, v.lat], zoom: 6.4, pitch: 30, bearing: 0, duration: reduced ? 0 : 3400, curve: 1.4, easing: easeIO });
     if (selectNext) setTimeout(() => selectVp(selectNext), reduced ? 0 : 1800);
@@ -2541,6 +2653,12 @@ function tick(t) {
       viewMoved();
     }
     if (flying) stepFly(t);
+    if (GLPano.ok && eyeOff !== eyeTarget) {
+      eyeOff += (eyeTarget - eyeOff) * (1 - Math.exp(-dt / 120));
+      if (Math.abs(eyeTarget - eyeOff) < 0.5) eyeOff = eyeTarget;
+      updateFlyUIGL(); viewMoved();
+    }
+    if (intro && intro.gl) stepIntroGL(t);
     if (intro && intro.stage === 'sweep') needDraw = true;
     if (needDraw) {
       needDraw = false;
@@ -2739,6 +2857,7 @@ window.__game = { VIEWPOINTS, get CUR() { return CUR; }, view, selectVp, enterVi
   glActive: () => GLPano.ok && !!GLPano.mesh,
   glSetEdges: (on) => { GLPano.edges = !!on; },
   get guessTarget() { return guessTarget; },
+  get eyeOff() { return eyeOff; }, get eyeTarget() { return eyeTarget; }, flyTravel, setEyeOffset,
   depthAtCentre: () => depthAtAng(G, view.heading, view.pitch),
   // css pixels whose grid distance lies in [lo, hi] / distances at css pixels, from the depth grid
   depthPixels: (lo, hi) => { const g = GLPano.readDepthGrid(4), out = []; for (let j = 0; j < g.h; j++) for (let i = 0; i < g.w; i++) { const d = g.data[j * g.w + i]; if (d >= lo && d <= hi) out.push([i * g.step / g.s, j * g.step / g.s]); } return out; },

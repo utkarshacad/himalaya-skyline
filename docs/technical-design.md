@@ -23,7 +23,42 @@
 - Corner tiles outside the circle are skipped. Tiles are fetched 12 at a time; the cache is cleared on each new viewpoint.
 - The levels are copied into a **pool of 1–4 workers** (`hardwareConcurrency − 1`). The main thread keeps no copy.
 
-## Panorama renderer (v2, November 2026)
+## Panorama renderer v3 (WebGL2, Stage 1, November 2026)
+
+Spec: `docs/superpowers/specs/2026-11-15-webgl-renderer-v3-design.md`. Plan: `docs/superpowers/plans/2026-11-15-webgl-renderer-v3-stage1.md`. Stage 1 ships the GPU core: terrain, Summit Noir shading (no flow lines or snow yet), outlines, cached tiles, drag-to-fly. Without WebGL2 the v2 renderer below runs unchanged.
+
+### Tile cache
+- `loadTile` first looks in the Cache API store `hs-tiles-v1` (keyed by the first tile URL) and stores every PNG it fetches. A revisit streams nothing. If the Cache API is missing or refuses (file://, private mode) tiles just stream.
+- Tiles that never arrive stay **NaN** in the level mosaics (they were 0 m before), so `elevAt` falls through to the coarser level instead of drawing a pit.
+
+### Polar mesh (`#mesh-src`, worker command `mesh`)
+- 2,048 azimuth columns × 600 rings. Ring `r` sits at `12 m · (235 km / 12 m)^(r/599)`: about 1.7 % of the distance apart, so screen density is even at every range.
+- Each vertex stays on its column's ray but moves to the **highest of 5 points inside its ring cell**, so a summit between two rings is never cut off the skyline (without this a sharp peak 36 km out drew 3–4 px low).
+- Per vertex: east, north, height (m) and `nx, ny, conv, rel` — normal from the level-spaced gradient, v2.4 curvature at 2.5× spacing, relief above the mean of 8 samples at `max(1.2 km, 6 % of d)`. Missing heights are `h = −1e4` with `rel = −1e9`; the shader drops them, nothing is NaN.
+- Built in row bands across the worker pool (Pangarchulla: about 0.7 s in the sandbox). The index (a wrapped grid, 7.4 M entries) is the same for every viewpoint and built once on the page. The arrays live only on the GPU after upload.
+
+### Drawing (`GLPano`)
+- **Vertex shader:** cylindrical projection, the same maths as `project()`: x = azimuth from the heading, y = `atan(h − d²·CURV − eye, d)` from the pitch. Triangles more than 2.2 rad from the heading (the seam behind the viewer) are discarded.
+- **Offscreen target:** colour (RGBA8) + distance (RGBA8, 24-bit fixed point over 0–300 km, 1.8 cm steps) + a depth buffer. RGBA8 works on every WebGL2 device; no float targets.
+- **Sky:** a gradient by altitude, `#0b0d11` above to `#2b313a` at the horizon (dark).
+- **Terrain tone** (from the art spike that produced the target): near `#0f1114` → far `#2a2f37`; light `L = 0.5 + 1.4·sun + 0.45·tanh(0.55·conv)` lifts toward `#8d939c` and shadows toward `#07080a`; mist toward `#3a414b` in low ground and with distance. Beyond the visibility range fragments are discarded, so the slider is a uniform.
+- **Outlines** (full-screen pass): a crest pixel is near terrain with farther terrain or sky right above it. Skyline alpha 0.58, ridges 0.55 × `0.15 + 0.85·smoothstep(0.06, 1, dFar/dNear − 1)`, both fading toward the visibility limit; 1 px plus a 0.3-alpha pixel below.
+- **Drawing buffer:** css size × `min(dpr, 2)`, capped at 4.2 M pixels.
+- Labels, quiz markers, rivers and the telescope keep using `project()` and `depthAtAng()`. In v3 `depthAtAng` reads a distance grid (every 4th buffer pixel) read back from the GPU when the view settles; river visibility is recomputed then too.
+
+### Fly by dragging
+- The fly control is a vertical track: the handle's travel maps linearly to 0–5,000 m. The eye eases toward the target (τ = 120 ms); nothing is rebuilt. Double-click or double-tap lands; Shift + ↑/↓ is ±250 m; on touch a two-finger vertical slide flies (a spreading pinch still zooms).
+
+### Fly-in
+- As v2.1 (the map lands at eye level, greys), then the ranges sweep in: the composite pass gives terrain beyond a growing radius (`maxD · e^2.2` over 2 s) zero alpha and the sky fades in last, over the map.
+
+### Context loss and fallback
+- On `webglcontextlost` the page stops drawing; on `webglcontextrestored` the programs are rebuilt and the mesh is rebuilt from the workers (they keep the terrain). If the context isn't back within 8 s the v2.4 strip renderer takes over for the session.
+
+### Tests
+- `tests/`: headless Chromium (SwiftShader) on real tiles. `smoke`, `cache` (zero tile requests on a revisit), `mesh` (geometry, heights vs `elevAt`, holes without NaN), `gl-terrain` (sky colour, GPU skyline within 3 px of a CPU ray march, resize, dpr-3 cap), `gl-edges`, `gl-play` (quiz, telescope, no processor renders while panning, visibility as a uniform), `gl-fly`, `fallback` (no WebGL2; context loss and restore).
+
+## Panorama renderer (v2, November 2026; the fallback since v3)
 
 The goal is PeakFinder's feel: a monochrome line drawing, and panning with no lag.
 
