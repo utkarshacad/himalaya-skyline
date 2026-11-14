@@ -572,6 +572,11 @@ onmessage = (e) => {
   if (m.cmd === 'strip') { if (m.gen >= minGen) { jobs.push(m); kick(); } return; }
   if (m.cmd === 'cancel') { minGen = m.gen; for (let i = jobs.length - 1; i >= 0; i--) if (jobs[i].gen < minGen) jobs.splice(i, 1); return; }
   if (m.cmd === 'rivers') { postMessage(traceRivers(m)); return; }
+  if (m.cmd === 'mesh') {
+    const o = buildPolarMesh(levels, vp, m);
+    postMessage({ cmd: 'mesh', id: m.id, r0: o.r0, r1: o.r1, pos: o.pos.buffer, attr: o.attr.buffer }, [o.pos.buffer, o.attr.buffer]); return;
+  }
+  if (m.cmd === 'elev') { postMessage({ cmd: 'elev', id: m.id, h: elevAtPolar(levels, vp, m.pts) }); return; }
   if (m.cmd === 'los') {
     const v = { lat: vp.lat, lon: vp.lon, eye: m.eye };
     postMessage({ cmd: 'los', vis: m.items.map(it => lineOfSight(levels, v, it.az, it.d, it.h)) }); return;
@@ -727,7 +732,7 @@ function traceRivers(m) {
   const y0 = Math.max(1, Math.floor(gcy - rpx)), y1 = Math.min(L.h - 2, Math.ceil(gcy + rpx));
   const w = x1 - x0 + 1, h = y1 - y0 + 1, n = w * h;
   const e = new Float32Array(n);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) e[y * w + x] = L.data[(y + y0) * L.w + (x + x0)];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const v = L.data[(y + y0) * L.w + (x + x0)]; e[y * w + x] = v === v ? v : 0; }
   const filled = new Float32Array(n), parent = new Int32Array(n).fill(-1), closed = new Uint8Array(n), order = new Int32Array(n);
   // binary heap
   const hi = new Int32Array(n), hk = new Float32Array(n); let hn = 0, on = 0;
@@ -805,6 +810,62 @@ function traceRivers(m) {
   return { cmd: 'rivers', verts: new Float32Array(verts).buffer, lines: new Int32Array(lines).buffer, cellKm2: (mpp * mpp) / 1e6 };
 }
 </script>
+
+<!-- Polar terrain mesh (v3): appended to the worker source. A grid of azimuth columns × geometric distance
+     rings around the viewer, in a local east-north-up frame (metres); the GPU projects it. -->
+<script id="mesh-src" type="text/plain">
+var MESH_COLS = 2048, MESH_ROWS = 600, MESH_D0 = 12, MESH_MAXD = 235000;
+function meshRings(rows, d0, maxD) {
+  const r = new Float32Array(rows), k = Math.log(maxD / d0) / (rows - 1);
+  for (let i = 0; i < rows; i++) r[i] = d0 * Math.exp(k * i);
+  return r;
+}
+// rows r0..r1-1 of the mesh: pos (east, north, height) and attr (nx, ny, conv, rel) per vertex.
+// Missing heights are written as h = −1e4 with attr.w = −1e9, so the shader drops them and nothing is NaN.
+function buildPolarMesh(levels, vp, o) {
+  const cols = o.cols || MESH_COLS, rows = o.rows || MESH_ROWS, d0 = o.d0 || MESH_D0, maxD = o.maxD || MESH_MAXD;
+  const r0 = o.r0 || 0, r1 = o.r1 == null ? rows : o.r1, n = (r1 - r0) * cols;
+  const rings = meshRings(rows, d0, maxD);
+  const pos = new Float32Array(n * 3), attr = new Float32Array(n * 4);
+  const SIN = new Float64Array(cols), COS = new Float64Array(cols);
+  for (let c = 0; c < cols; c++) { const az = 2 * Math.PI * c / cols; SIN[c] = Math.sin(az); COS[c] = Math.cos(az); }
+  const RD = [[1, 0], [-1, 0], [0, 1], [0, -1], [.7, .7], [-.7, -.7], [.7, -.7], [-.7, .7]];
+  const lat0 = vp.lat, lon0 = vp.lon;
+  for (let r = r0; r < r1; r++) {
+    const d = rings[r], e = d < 7000 ? 70 : d < 20000 ? 140 : d < 72000 ? 280 : 560, e2 = e * 2.5, R = Math.max(1200, 0.06 * d);
+    for (let c = 0; c < cols; c++) {
+      const i = (r - r0) * cols + c, s = SIN[c], co = COS[c];
+      const lat = lat0 + d * co / K_DEG, cl = Math.cos(lat * 0.017453292519943295), lon = lon0 + d * s / (K_DEG * cl);
+      const dLon = 1 / (K_DEG * cl), dLat = 1 / K_DEG;
+      const h = elevAt(levels, lon, lat, d);
+      pos[i * 3] = d * s; pos[i * 3 + 1] = d * co;
+      if (h !== h) { pos[i * 3 + 2] = -1e4; attr[i * 4 + 3] = -1e9; continue; }
+      pos[i * 3 + 2] = h;
+      // normal from the e-spaced central gradient
+      const hE = elevAt(levels, lon + e * dLon, lat, d), hW = elevAt(levels, lon - e * dLon, lat, d);
+      const hN = elevAt(levels, lon, lat + e * dLat, d), hS = elevAt(levels, lon, lat - e * dLat, d);
+      let gx = 0, gy = 0;
+      if (hE === hE && hW === hW) gx = (hE - hW) / (2 * e);
+      if (hN === hN && hS === hS) gy = (hN - hS) / (2 * e);
+      const inv = 1 / Math.sqrt(gx * gx + gy * gy + 1);
+      attr[i * 4] = -gx * inv; attr[i * 4 + 1] = -gy * inv;
+      // curvature as v2.4: + on ridges and spurs, − in gullies
+      const c1 = elevAt(levels, lon + e2 * dLon, lat, d), c2 = elevAt(levels, lon - e2 * dLon, lat, d);
+      const c3 = elevAt(levels, lon, lat + e2 * dLat, d), c4 = elevAt(levels, lon, lat - e2 * dLat, d);
+      attr[i * 4 + 2] = (c1 === c1 && c2 === c2 && c3 === c3 && c4 === c4) ? (4 * h - c1 - c2 - c3 - c4) / e2 : 0;
+      // relief above the surroundings (mean of 8 samples at radius R)
+      let sum = 0, k = 0;
+      for (let j = 0; j < 8; j++) { const v = elevAt(levels, lon + RD[j][0] * R * dLon, lat + RD[j][1] * R * dLat, d); if (v === v) { sum += v; k++; } }
+      attr[i * 4 + 3] = k ? h - sum / k : 0;
+    }
+  }
+  return { cols, rows, r0, r1, rings, pos, attr };
+}
+function elevAtPolar(levels, vp, pts) {
+  return pts.map(([az, d]) => { const [la, lo] = geoFrom(vp.lat, vp.lon, az, d); return elevAt(levels, lo, la, d); });
+}
+</script>
+
 
 <script>
 // =====================================================================================
@@ -907,6 +968,7 @@ const TILE_URLS = [
 // =====================================================================================
 const SHARED = document.getElementById('shared-src').textContent;
 (0, eval)(SHARED);
+(0, eval)(document.getElementById('mesh-src').textContent);   // mesh constants and meshRings() on the page too
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => Math.round(n).toLocaleString('en-IN');
 const TAU = Math.PI * 2;
@@ -975,7 +1037,7 @@ async function buildLevels(vp, onProgress) {
     const cx = (vp.lon + 180) / 360 * W, cy = (1 - mercN(vp.lat) / Math.PI) / 2 * W, r = s.cover / mpp;
     const tx0 = Math.floor((cx - r) / 256), tx1 = Math.floor((cx + r) / 256), ty0 = Math.floor((cy - r) / 256), ty1 = Math.floor((cy + r) / 256);
     const L = { z: s.z, W, maxD: s.maxD, x0: tx0 * 256, y0: ty0 * 256, w: (tx1 - tx0 + 1) * 256, h: (ty1 - ty0 + 1) * 256 };
-    L.data = new Float32Array(L.w * L.h);
+    L.data = new Float32Array(L.w * L.h).fill(NaN);   // tiles that never arrive stay NaN: elevAt falls through to the coarser level
     s.L = L;
     for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
       // skip corner tiles that lie fully outside the circle
@@ -1053,7 +1115,7 @@ const easeIO = (k) => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
 
 // ---------- worker pool ----------
 function makeWorker() {
-  const src = SHARED + '\n' + document.getElementById('worker-src').textContent;
+  const src = SHARED + '\n' + document.getElementById('worker-src').textContent + '\n' + document.getElementById('mesh-src').textContent;
   const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
   const w = new Worker(url);
   w.onmessage = (e) => onWorker(w, e.data);
@@ -1064,7 +1126,33 @@ function onWorker(w, m) {
   else if (m.cmd === 'strip') (m.kind === 'frame' ? onFlyFrame(m) : onStrip(m));
   else if (m.cmd === 'los') w._los && w._los(m.vis);
   else if (m.cmd === 'rivers') w._riv && w._riv(m);
+  else if (m.cmd === 'mesh' || m.cmd === 'elev') { const cb = w._cb && w._cb[m.id]; if (cb) { delete w._cb[m.id]; cb(m); } }
 }
+let reqId = 0;
+function ask(w, msg, transfer) { return new Promise((res) => { const id = ++reqId; (w._cb || (w._cb = {}))[id] = res; w.postMessage({ ...msg, id }, transfer || []); }); }
+// The polar mesh, built in row bands across the worker pool and stitched here. The index is the same for
+// every viewpoint: a wrapped grid (the last column joins the first).
+let meshIndexCache = null;
+function meshIndex(cols, rows) {
+  if (meshIndexCache && meshIndexCache.cols === cols && meshIndexCache.rows === rows) return meshIndexCache.index;
+  const idx = new Uint32Array(cols * (rows - 1) * 6); let k = 0;
+  for (let r = 0; r < rows - 1; r++) for (let c = 0; c < cols; c++) {
+    const a = r * cols + c, b = r * cols + (c + 1) % cols, a2 = a + cols, b2 = b + cols;
+    idx[k++] = a; idx[k++] = b; idx[k++] = a2; idx[k++] = b; idx[k++] = b2; idx[k++] = a2;
+  }
+  meshIndexCache = { cols, rows, index: idx };
+  return idx;
+}
+async function buildMesh(opts = {}) {
+  const cols = opts.cols || MESH_COLS, rows = opts.rows || MESH_ROWS, n = workers.length;
+  const bands = Array.from({ length: n }, (_, k) => [Math.round(rows * k / n), Math.round(rows * (k + 1) / n)]);
+  const parts = await Promise.all(bands.map(([r0, r1], k) => ask(workers[k], { cmd: 'mesh', cols, rows, r0, r1 })));
+  const pos = new Float32Array(cols * rows * 3), attr = new Float32Array(cols * rows * 4);
+  for (const p of parts) { pos.set(new Float32Array(p.pos), p.r0 * cols * 3); attr.set(new Float32Array(p.attr), p.r0 * cols * 4); }
+  stats.meshBuilds++;
+  return { cmd: 'mesh', cols, rows, pos, attr, index: meshIndex(cols, rows), rings: meshRings(rows, MESH_D0, MESH_MAXD) };
+}
+const stats = { meshBuilds: 0, newGen: 0 };
 async function startWorkers(levels, vpMsg) {
   stopWorkers();
   const n = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
@@ -2318,7 +2406,10 @@ loadMapLibre().then((ok) => {
   refreshHome();
 });
 window.__game = { VIEWPOINTS, get CUR() { return CUR; }, view, selectVp, enterViewpoint, showPlay, onViewChanged, goHome,
-  ready: () => !!(CUR && G && visibleReady(G)) };
+  ready: () => !!(CUR && G && visibleReady(G)),
+  stats: () => ({ ...stats }),
+  buildMeshForTest: () => buildMesh(),
+  elevAtPolarForTest: (pts) => ask(workers[0], { cmd: 'elev', pts }).then(m => m.h) };
 </script>
 </body>
 </html>
