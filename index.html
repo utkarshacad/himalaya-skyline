@@ -1159,7 +1159,7 @@ void main() {
 precision highp float;
 in vec2 vUv;
 uniform sampler2D uCol, uDep, uAcc;
-uniform float uFar, uMaxD, uEdgeK, uSkyA, uRidgeA, uSweepR, uSkyAlpha, uAccK, uFlowGain, uFlowMax;
+uniform float uFar, uMaxD, uEdgeK, uSkyA, uRidgeA, uSweepR, uSkyAlpha, uAccK, uFlowGain, uFlowMax, uMaxC;
 uniform vec3 uLine, uFlowCol;
 out vec4 o;
 float dist(ivec2 p) {
@@ -1190,7 +1190,7 @@ void main() {
   }
   float a = max(crest(p), 0.3 * crest(p + ivec2(0, 1)));     // 1 px line plus a fainter pixel under it
   c = mix(c, uLine, clamp(a * uEdgeK, 0.0, 1.0));
-  c = min(c, vec3(0.972));                               // never pure white
+  c = min(c, vec3(uMaxC));                               // never pure white (dark: lines + outlines stay soft)
   // fly-in sweep: ranges appear nearest first out to uSweepR, the sky last (uSweepR < 0: no sweep)
   float d = dist(p), al = d > 1e8 ? uSkyAlpha : (uSweepR < 0.0 ? 1.0 : 1.0 - smoothstep(0.75 * uSweepR, uSweepR + 1.0, d));
   o = vec4(c * al, al);
@@ -1769,11 +1769,11 @@ const GL_THEMES = {
   dark: { skyTop: '#0b0d11', skyHor: '#2b313a', near: '#0f1114', far: '#2a2f37', glow: '#8d939c', deep: '#07080a', mist: '#3a414b',
           glowK: .18, deepK: .3, sun: 1, curvK: .55, haze: .0, mistK: 1, mistLo: 120, mistHi: 1100, line: '#ffffff', skyA: .58, ridgeA: .55,
           snow: '#9aa2ad', snowK: .5, snowLine: 4900,
-          flowCol: '#eceff4', flowGain: .8, flowMax: .8, gullyK: .7 },
+          flowCol: '#eceff4', flowGain: 2.4, flowMax: .85, gullyK: .7, maxC: .89 },
   // Ink & Mist: warm paper, ink-wash ranges that lighten with distance, paper-coloured mist in the valleys
   light: { skyTop: '#f6f3ec', skyHor: '#ece8de', near: '#4b4844', far: '#d8d3c8', glow: '#bcb7ad', deep: '#2f2d2a', mist: '#e6e2d8',
           glowK: .4, deepK: .55, sun: 1, curvK: .5, haze: .25, mistK: 1.15, mistLo: 120, mistHi: 1100, line: '#1d1c1a', skyA: .8, ridgeA: .7,
-          snow: '#d8d4ca', snowK: .25, snowLine: 4900 },
+          snow: '#d8d4ca', snowK: .25, snowLine: 4900, maxC: .972 },
 };
 const GLPano = (() => {
   const P = { ok: false, ready: false, canvas: null, gl: null, flowOn: true, flowMode: 'off', sectors: [], fading: false, art: { edges: true, snow: true, flow: true, fine: true, rivers: true } };
@@ -1958,7 +1958,7 @@ const GLPano = (() => {
       gl.useProgram(progLine.p); const ul = progLine.u, z = ppr / FLOW_PPR, px = 1 / s;
       gl.uniform1f(ul.uHeading, v.heading); gl.uniform1f(ul.uPitch, v.pitch); gl.uniform1f(ul.uPpr, ppr); gl.uniform1f(ul.uEye, v.eye);
       gl.uniform1f(ul.uW, v.W); gl.uniform1f(ul.uH, v.H); gl.uniform1f(ul.uCurv, CURV); gl.uniform1f(ul.uFar, GL_FAR); gl.uniform1f(ul.uMaxD, v.maxD);
-      gl.uniform1f(ul.uCore, 0.75); gl.uniform1f(ul.uPx, px); gl.uniform1f(ul.uHalfW, 0.375 + px); gl.uniform1f(ul.uWMax, FLOW_WMAX);
+      gl.uniform1f(ul.uCore, 1.0); gl.uniform1f(ul.uPx, px); gl.uniform1f(ul.uHalfW, 0.5 + px); gl.uniform1f(ul.uWMax, FLOW_WMAX);
       gl.uniform1f(ul.uGullyK, T.gullyK); gl.uniform1f(ul.uAccK, flowK);
       gl.uniform1f(ul.uTier0, Math.max(0.45, Math.min(1, z)));
       const t1 = P.art.fine ? Math.max(0, Math.min(1, (z - 1.3) / 0.6)) : 0; gl.uniform1f(ul.uTier1, t1 * t1 * (3 - 2 * t1));
@@ -1984,6 +1984,7 @@ const GLPano = (() => {
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, texAcc || texCol); gl.uniform1i(ue.uAcc, 2); gl.activeTexture(gl.TEXTURE0);
     gl.uniform1f(ue.uAccK, flowK ? 1 / flowK : 0); gl.uniform1f(ue.uFlowGain, T.flowGain || 0); gl.uniform1f(ue.uFlowMax, T.flowMax || 0);
     if (T.flowCol) gl.uniform3fv(ue.uFlowCol, T.flowCol);
+    gl.uniform1f(ue.uMaxC, T.maxC || 1);
     gl.uniform1f(ue.uFar, GL_FAR); gl.uniform1f(ue.uMaxD, v.maxD); gl.uniform1f(ue.uEdgeK, P.art.edges ? 1 : 0);
     gl.uniform1f(ue.uSkyA, T.skyA); gl.uniform1f(ue.uRidgeA, T.ridgeA); gl.uniform3fv(ue.uLine, T.line);
     gl.uniform1f(ue.uSweepR, P.sweep == null ? -1 : P.sweep * v.maxD); gl.uniform1f(ue.uSkyAlpha, P.sweep == null ? 1 : P.skyAlpha || 0);
