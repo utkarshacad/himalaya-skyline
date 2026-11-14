@@ -13,9 +13,9 @@
 ## Owner decisions for Stage 2 (14 November 2026)
 
 1. **Gullies: "quieter still".** Where lines pile up in a gully it is barely brighter than the flanks around it. The summits carry the light. This is stricter than the target image, which still shows a few bright gully streaks; the target is right for **cap brightness** only.
-2. **Flow lines in the light theme** (off by default): **fine dark ink lines**, thickening toward the summits.
+2. **No flow lines in the light theme.** A test render of ink lines on the light wash was rejected. Light stays pure wash and outlines; the Flow lines setting is not offered there.
 3. **Rivers: muted glacier blue** in both themes, pale sparkles.
-4. **Light theme: a subtle static paper grain**, fixed to the screen.
+4. **Light theme: no paper grain.** Clean flat paper tones (the owner preferred the cleaner look in a with/without test render).
 
 ## Global Constraints
 
@@ -24,7 +24,7 @@
 - Flow-line constants come from the spike. Composite compression starts at gain **0.8** (never 2.6). **No blur pass.**
 - Both ends of every line taper: `smoothstep(0, .06, u) · smoothstep(0, .4, 1−u)`.
 - Line colour never reaches pure white: the composite is capped (`flowMax` < 1).
-- Flow lines default **on in dark, off in light**, remembered per theme.
+- Flow lines exist in the **dark theme only**: on by default, and the On/Off choice is remembered. The light theme never draws or traces them.
 - Cache: IndexedDB database `hs-v3`, object store `flow`, key `viewpointId@algoVersion`.
 - Dark constants (Summit Noir): snow toward `#9aa2ad`; snowline `4900 − 450·(L − .5) − 260·tanh(0.6·conv)`; skyline alpha 0.58, ridges 0.55.
 - Light constants (Ink & Mist): sky `#f6f3ec` → `#ece8de`; never pure white anywhere.
@@ -50,8 +50,8 @@ Everything is in `index.html`; new blocks and sections:
 | `#flow-src` (new, page + worker) | `flowSeeds`, `traceFlowSector`: the tracer, no DOM, no GL |
 | `#glsl-terrain-fs` (modify) | snow, valley mist, light value into alpha |
 | `#glsl-line-vs`, `#glsl-line-fs` (new) | screen-space quads for flow lines and rivers |
-| `#glsl-edge-fs` (modify) | composite: compressed flow layer, grain, then outlines |
-| `GL_THEMES` (modify) | all art constants per theme |
+| `#glsl-edge-fs` (modify) | composite: compressed flow layer, then outlines |
+| `GL_THEMES` (modify) | all art constants per theme (flow fields in dark only) |
 | `GLPano` (modify) | accumulation target, line and river buffers, per-sector fade |
 | `FlowStore`, `Flow` (new section "Flow lines") | IndexedDB, sector schedule, cancel, hand-off to `GLPano` |
 | Tests | `tests/mesh.test.js` (modify), `tests/gl-art.test.js`, `tests/flow-trace.test.js`, `tests/flow-cache.test.js`, `tests/gl-lines.test.js`, `tests/gl-rivers.test.js`, `tests/acceptance.test.js`, `tests/compare.js` (new) |
@@ -83,7 +83,7 @@ Everything is in `index.html`; new blocks and sections:
 - Test: `tests/gl-art.test.js` (new)
 
 **Interfaces:**
-- `GL_THEMES.<name>` gains: `snow` (hex), `snowK`, `snowLine` (m), `mistLo`, `mistHi` (now metres **above the valley floor**), `flowCol`, `flowGain`, `flowMax`, `gullyK`, `grain`, `river` (hex), `glint` (hex). Dark values: `snow '#9aa2ad'`, `snowK .5`, `snowLine 4900`, `mistLo 120`, `mistHi 1100`.
+- `GL_THEMES.<name>` gains: `snow` (hex), `snowK`, `snowLine` (m), `mistLo`, `mistHi` (now metres **above the valley floor**), `flowCol`, `flowGain`, `flowMax`, `gullyK`, `river` (hex), `glint` (hex). Dark values: `snow '#9aa2ad'`, `snowK .5`, `snowLine 4900`, `mistLo 120`, `mistHi 1100`.
 - Terrain shader, after the existing light term `L`:
   - `sl = snowLine − 450·(L − .5) − 260·tanh(0.6·conv)`; `snow = smoothstep(sl − 300, sl + 1100, h)·(.55 + .45·L)·(1 − .55·fd)`; `c = mix(c, snow colour, snow·snowK)`.
   - `mist = (1 − smoothstep(mistLo, mistHi, h − floor))·smoothstep(.03, .25, fd)·.75 + smoothstep(.35, 1, fd)·.35`; `c = mix(c, mist colour, min(.85, mist·mistK))`.
@@ -97,21 +97,21 @@ Everything is in `index.html`; new blocks and sections:
 - [ ] **Step 4:** Run `gl-art`, `gl-terrain`, `gl-edges`, `gl-play` — PASS (update `gl-edges` only if its luminance margins moved; do not loosen below 20).
 - [ ] **Step 5:** Commit + push: `feat: snow tone and valley mist`.
 
-### Task 3: Ink & Mist light theme and paper grain
+### Task 3: Ink & Mist light theme
 
 **Files:**
-- Modify: `index.html` — `GL_THEMES.light`, `#glsl-edge-fs` (grain), `#glsl-sky-fs` if the horizon band needs it
+- Modify: `index.html` — `GL_THEMES.light`, `#glsl-edge-fs` (white clamp), `#glsl-sky-fs` if the horizon band needs it
 - Test: `tests/gl-art.test.js`
 
 **Interfaces:**
-- `GL_THEMES.light` starting values (tuned in Task 9 against the target): `skyTop '#f6f3ec'`, `skyHor '#ece8de'`, `near '#56534e'`, `far '#c9c4b9'`, `glow '#bcb7ad'`, `deep '#2f2d2a'`, `mist '#e6e2d8'`, `glowK .5`, `deepK .55`, `sun 1`, `curvK .5`, `haze .25`, `mistK 1`, `mistLo 120`, `mistHi 1100`, `snow '#d8d4ca'`, `snowK .25`, `snowLine 4900`, `line '#1d1c1a'`, `skyA .8`, `ridgeA .7`, `grain .028`; dark `grain 0`.
-- Composite: `c += (hash(gl_FragCoord.xy) − .5)·uGrain` on terrain and sky, a fixed screen-space hash with no time term; then clamp so no channel exceeds `0.972` (never pure white).
+- `GL_THEMES.light` starting values (tuned in Task 9 against the target): `skyTop '#f6f3ec'`, `skyHor '#ece8de'`, `near '#56534e'`, `far '#c9c4b9'`, `glow '#bcb7ad'`, `deep '#2f2d2a'`, `mist '#e6e2d8'`, `glowK .5`, `deepK .55`, `sun 1`, `curvK .5`, `haze .25`, `mistK 1`, `mistLo 120`, `mistHi 1100`, `snow '#d8d4ca'`, `snowK .25`, `snowLine 4900`, `line '#1d1c1a'`, `skyA .8`, `ridgeA .7`.
+- Composite: clamp so no channel exceeds `0.972` (never pure white). No grain (owner decision 4).
 
-- [ ] **Step 1:** Add to `gl-art.test.js` (Pangarchulla, light): top-centre sky within 6 of `#f6f3ec` after averaging a 16×16 box (grain averages out); no pixel in the frame is `[255,255,255]`; near terrain (under 6 km) mean luminance is under 110 and terrain at 60–100 km is over 170 (ranges lighten with distance); the valley point from Task 2 (c) is within 16 of `#e6e2d8`; the skyline pixel is at least 40 darker than the sky above it; the standard deviation of a 16×16 sky box is between 0.5 and 4 (grain is present and subtle); two screenshots 10 pan frames apart, shifted back by the pan, have identical grain at 5 fixed screen pixels (grain is fixed to the screen).
+- [ ] **Step 1:** Add to `gl-art.test.js` (Pangarchulla, light): top-centre sky within 6 of `#f6f3ec`; no pixel in the frame is `[255,255,255]`; near terrain (under 6 km) mean luminance is under 110 and terrain at 60–100 km is over 170 (ranges lighten with distance); the valley point from Task 2 (c) is within 16 of `#e6e2d8`; the skyline pixel is at least 40 darker than the sky above it; a 16×16 sky box is perfectly smooth (standard deviation under 0.5: no grain).
 - [ ] **Step 2:** Run — FAIL.
 - [ ] **Step 3:** Implement.
 - [ ] **Step 4:** Run `gl-art`, `gl-play`, `smoke` — PASS. Write `tests/out/stage2-light-wash.png`.
-- [ ] **Step 5:** Commit + push: `feat: Ink & Mist light theme with paper grain`.
+- [ ] **Step 5:** Commit + push: `feat: Ink & Mist light theme`.
 
 ### Task 4: Flow-line tracer (`#flow-src`)
 
@@ -178,15 +178,15 @@ Everything is in `index.html`; new blocks and sections:
 - `GLPano.setFlowSector(sector: number, verts: Float32Array, fadeIn: boolean)`: uploads one buffer + VAO per sector. Instanced: each instance is a segment whose two ends are the same buffer bound twice, one vertex apart (`vertexAttribDivisor 1`), drawn as a 4-vertex strip. A segment starting at a vertex with `flag ≥ 2` collapses. `fadeIn` starts a 600 ms fade for that sector (`performance.now()` based; `needDraw` stays true while a fade runs). `GLPano.clearLines()` deletes them all. `GLPano.flowOn: boolean`.
 - **Accumulation target:** `R16F` when `EXT_color_buffer_half_float` (or `EXT_color_buffer_float`) is present and `checkFramebufferStatus` is complete; otherwise `R8` with every line alpha written at ¼ strength and the composite multiplying back by 4 (`GLPano.flowMode: 'half' | 'byte' | 'off'`). It is the same size as the main target and **shares its depth renderbuffer**, depth test `LEQUAL`, depth writes off, blend `ONE, ONE`. If the main framebuffer itself is incomplete, or the size exceeds `MAX_TEXTURE_SIZE`, the buffer scale is halved and retried once; then `GLPano.ok = false` and `onGiveUp()` (Stage 1 deferred item).
 - **Line vertex shader:** projects both ends exactly as the terrain shader; expands the quad by `0.75·s/2 + 1` buffer pixels across the segment (`s` = buffer scale); depth `(d·0.997 − 25) / uFar`; drops segments behind the viewer (`|dx| > 2.2`) and beyond `uMaxD`.
-- **Line fragment alpha** (dark and light alike; colour is applied in the composite):
+- **Line fragment alpha** (colour is applied in the composite):
   - `peakK = .05 + .2·sm(4300, 7400, h0) + .14·sm(120, 650, rel0)`
   - `down = sm(h0 − clamp(3·rel0, 900, 2800), h0, h)`
   - `a = .38·peakK·(.1 + .9·down^1.6) · (1 − min(1, 1.15·d/uMaxD)) · (.25 + .75·sm(2000, 25000, d))`
   - `· smoothstep(0, .06, u)·smoothstep(0, .4, 1 − u)` (taper)
-  - `· (1 − uGullyK·sm(0, 1, −tanh(.6·conv)))` (owner decision 1; dark `gullyK .7`, light `.7`)
+  - `· (1 − uGullyK·sm(0, 1, −tanh(.6·conv)))` (owner decision 1; `gullyK .7`)
   - `· tierK`: tier 0 → `clamp(z, .45, 1)`; tier 1 → `smoothstep(1.3, 1.9, z)`; `z = ppr / FLOW_PPR`
   - `· coverage` (1 at the centre line, 0 at the quad edge) `· uFade` (sector fade)
-- **Composite** (`#glsl-edge-fs`, before the outlines): `f = flowMax·(1 − exp(−flowGain·v))·(.5 + .5·L)`, `c = mix(c, flowCol, f)`. Dark: `flowCol '#eceff4'`, `flowGain .8`, `flowMax .8`. Light: `flowCol '#2b2925'`, `flowGain .6`, `flowMax .55`. No blur.
+- **Composite** (`#glsl-edge-fs`, before the outlines): `f = flowMax·(1 − exp(−flowGain·v))·(.5 + .5·L)`, `c = mix(c, flowCol, f)`. Dark: `flowCol '#eceff4'`, `flowGain .8`, `flowMax .8`. The light theme has no flow fields and skips the accumulation pass. No blur.
 - Draw order per frame: sky → terrain → (rivers, Task 8) → flow accumulation (only the sectors within the view ± margin, only when `flowOn`) → composite.
 - `stats.lineUploads` counts `setFlowSector` calls; `stats.lineDraws` the sector draws in the last frame.
 
@@ -196,23 +196,22 @@ Everything is in `index.html`; new blocks and sections:
 - [ ] **Step 4:** Run `npm test` — PASS. Write `tests/out/stage2-dark-lines.png`.
 - [ ] **Step 5:** Commit + push: `feat: flow lines drawn on the GPU`.
 
-### Task 7: "Flow lines" setting, per theme
+### Task 7: "Flow lines" setting (dark theme)
 
 **Files:**
 - Modify: `index.html` — settings card markup (`#seg-contours` → `#seg-flow`, label "Flow lines"), `PREFS`, the theme and segment handlers, `Flow.start` gating
 - Test: `tests/gl-play.test.js`, `tests/fallback.test.js`
 
 **Interfaces:**
-- `PREFS.fl = { dark: true, light: false }`; `flowOn() → boolean` for the current theme. `PREFS.ct` stays only for the v2.4 fallback, fixed at its per-theme defaults (off in dark, on in light), with no control: contours are retired in v3 (§10.3).
+- `PREFS.fl = true` (the dark theme's choice); `flowOn() → boolean` is `PREFS.theme === 'dark' && PREFS.fl`. `PREFS.ct` stays only for the v2.4 fallback, fixed at its per-theme defaults (off in dark, on in light), with no control: contours are retired in v3 (§10.3).
 - Picking On/Off sets `GLPano.flowOn` (a uniform-level switch, instant). If lines were never traced for this viewpoint, turning it on calls `Flow.start` and they fade in.
-- Switching theme repaints the chip for that theme's remembered value.
-- Without WebGL2 the row is hidden (`#play:not(.gl) .t-flow { display: none }`).
+- The row is hidden in the light theme and without WebGL2 (`body[data-theme=light] .t-flow, #play:not(.gl) .t-flow { display: none }`). Switching to light sets `GLPano.flowOn = false` and does not start a trace; switching back to dark restores the remembered choice.
 
-- [ ] **Step 1:** Extend `gl-play.test.js`: the settings card has a "Flow lines" row and no "Contours" row; dark starts On, light starts Off; turning it Off in dark, switching to light and back shows Off in dark (remembered), and it survives a reload; in light, turning it On produces **darker** pixels in the Dunagiri cap box than Off (ink lines, owner decision 2) and no pixel `[255,255,255]`; toggling it does not change `stats().meshBuilds`. Extend `fallback.test.js`: with `noWebGL2` the row is not visible and the quiz flow still passes.
+- [ ] **Step 1:** Extend `gl-play.test.js`: the settings card has a "Flow lines" row and no "Contours" row; dark starts On; turning it Off in dark, switching to light and back shows Off in dark (remembered), and it survives a reload; in light the row is not visible, the frame is identical to one taken with `setArt({ flow: false })`, and entering a fresh viewpoint in light leaves `stats().flowTraces` at 0 (owner decision 2); switching that viewpoint to dark then traces and fades the lines in; toggling it does not change `stats().meshBuilds`. Extend `fallback.test.js`: with `noWebGL2` the row is not visible and the quiz flow still passes.
 - [ ] **Step 2:** Run — FAIL.
 - [ ] **Step 3:** Implement.
 - [ ] **Step 4:** Run `npm test` — PASS.
-- [ ] **Step 5:** Commit + push: `feat: Flow lines setting, remembered per theme`.
+- [ ] **Step 5:** Commit + push: `feat: Flow lines setting for the dark theme`.
 
 ### Task 8: Rivers on the GPU
 
