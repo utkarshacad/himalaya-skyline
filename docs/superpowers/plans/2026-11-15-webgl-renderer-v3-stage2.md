@@ -272,10 +272,15 @@ Everything is in `index.html`; new blocks and sections:
 | Test gap: the fly-in with the map | Task 8 |
 | Fly track: a tap then a drag counts as a double-tap | **Not in Stage 2** (nothing here touches the fly control); Stage 3 polish |
 
-## Stage 3 — Look and feel (outline, unchanged)
+## Copper accent, brought forward (owner, 15 November 2026)
+
+Done between Task 6 and Task 7: copper `#b8734a` replaces the pink accent everywhere in both themes and the v2.4 fallback: selected peaks, marks (flag, favourite), active buttons and chips, sliders, the fly handle, focus rings, and the home map. Test: no pink (`#ff3b77`, `#e0245e`, or their rgba forms) remains in the page's CSS or inline styles, and the accent custom property computes to `#b8734a` in both themes.
+
+## Stage 3 — Look and feel (outline; owner additions 15 November 2026)
 
 - Cormorant Garamond + IBM Plex Mono; copper `#b8734a` replaces pink everywhere (including the v2.4 fallback CSS).
 - PeakFinder-format labels: slanted pill "Name 7,066 m", leader line, common band; selected = copper pill.
 - Engraved-triangle viewpoint icons (map + grid), copper dot when done.
 - Arrival caption (about 3 s, then fades).
+- **Edge turning (new, owner):** holding the far left or right edge of the panorama turns the view slowly that way, easing to a stop on release. The zones are invisible; a faint copper chevron (‹ ›) fades in at that edge on hover (desktop) or while pressed (phone). Nothing stays on the map.
 - Fly-track tap-then-drag fix; polish against the targets on real devices.
