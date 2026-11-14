@@ -590,6 +590,10 @@ onmessage = (e) => {
     const o = buildPolarMesh(levels, vp, m);
     postMessage({ cmd: 'mesh', id: m.id, r0: o.r0, r1: o.r1, pos: o.pos.buffer, attr: o.attr.buffer }, [o.pos.buffer, o.attr.buffer]); return;
   }
+  if (m.cmd === 'flow') {
+    const o = traceFlowSector(levels, vp, m);
+    postMessage({ cmd: 'flow', id: m.id, sector: m.sector, verts: o.verts, nLines: o.nLines, nVerts: o.nVerts, edge: o.edge.buffer, bands: o.bands, ms: o.ms }, [o.verts, o.edge.buffer]); return;
+  }
   if (m.cmd === 'skyline') { postMessage({ cmd: 'elev', id: m.id, h: m.azs.map(az => skylineAlt(az, m.eye, m.maxD)) }); return; }
   if (m.cmd === 'elev') { postMessage({ cmd: 'elev', id: m.id, h: elevAtPolar(levels, vp, m.pts) }); return; }
   if (m.cmd === 'los') {
@@ -909,6 +913,117 @@ function elevAtPolar(levels, vp, pts) {
   return pts.map(([az, d]) => { const [la, lo] = geoFrom(vp.lat, vp.lon, az, d); return elevAt(levels, lo, la, d); });
 }
 </script>
+<!-- Flow lines (v3 Stage 2): traced once per viewpoint in world space, in a worker, one azimuth sector at a time.
+     Lines start on high ground and run downhill. Spacing is kept on a log-polar lattice around the viewer:
+     cell (u, v) = (azimuth · FLOW_PPR, ln(d / FLOW_D0) · FLOW_PPR), so one cell is d / FLOW_PPR metres both ways
+     (about one screen pixel at the default zoom). Vertex = 16 bytes: float32 east, north, height (m);
+     uint8 u·255 (arc-length fraction), weight·255, gully (127 + 127·tanh(0.6·conv)), flag (tier + 2 on a line's last vertex). -->
+<script id="flow-src" type="text/plain">
+var FLOW_ALGO = 1, FLOW_SECTORS = 16, FLOW_PPR = 1150, FLOW_D0 = 150, FLOW_MAXD = 230000, FLOW_BUDGET = 1200000, FLOW_BYTES = 16, FLOW_WMAX = 0.15;
+function flowSm(a, b, x) { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
+function flowSep(h) { return 1.1 + 15 * Math.pow(1 - flowSm(3600, 7000, h), 1.3); }      // spacing in cells: tight at the summits
+// o = { sector, az0, tiers: 1|2, occ: Int32Array|null ([u, v] cells taken by neighbouring sectors), budget }
+function traceFlowSector(levels, vp, o) {
+  const t0 = Date.now(), TAU = Math.PI * 2, PPR = FLOW_PPR, RAD = Math.PI / 180;
+  const halfW = Math.PI / FLOW_SECTORS * PPR, M = Math.ceil(6 * RAD * PPR);
+  const azc = o.az0 + o.sector * TAU / FLOW_SECTORS;
+  const U0 = Math.ceil(halfW) + M, GW = 2 * U0 + 1, GV = Math.ceil(Math.log(FLOW_MAXD / FLOW_D0) * PPR) + 2;
+  const occ = new Uint16Array(GW * GV);                     // 0 free, 65535 another sector's line, else a line id
+  const lat0 = vp.lat, lon0 = vp.lon, eyeTop = vp.eye + 5000;
+  const elev = (x, y, d) => { const lat = lat0 + y / K_DEG; return elevAt(levels, lon0 + x / (K_DEG * Math.cos(lat * RAD)), lat, d); };
+  const wrapPi = (a) => { a = ((a % TAU) + TAU) % TAU; return a > Math.PI ? a - TAU : a; };
+  const cellU = (x, y) => wrapPi(Math.atan2(x, y) - azc) * PPR + U0, cellV = (d) => Math.log(d / FLOW_D0) * PPR;
+  if (o.occ) for (let i = 0; i < o.occ.length; i += 2) {
+    const u = Math.round(wrapPi(o.occ[i] / PPR - azc) * PPR) + U0, v = o.occ[i + 1];
+    if (u >= 0 && u < GW && v >= 0 && v < GV) occ[v * GW + u] = 65535;
+  }
+  const near = (u, v, id, r) => {
+    const r2 = r * r, u0 = Math.max(0, Math.floor(u - r)), u1 = Math.min(GW - 1, Math.ceil(u + r)), v0 = Math.max(0, Math.floor(v - r)), v1 = Math.min(GV - 1, Math.ceil(v + r));
+    for (let vv = v0; vv <= v1; vv++) for (let uu = u0; uu <= u1; uu++) { const c = occ[vv * GW + uu]; if (c && c !== id && (uu - u) * (uu - u) + (vv - v) * (vv - v) <= r2) return true; }
+    return false;
+  };
+  const RD = [[1, 0], [-1, 0], [0, 1], [0, -1], [.7, .7], [-.7, -.7], [.7, -.7], [-.7, .7]];
+  const relAt = (x, y, d, h) => { const R = Math.max(1200, 0.06 * d); let s = 0, n = 0;
+    for (let j = 0; j < 8; j++) { const v = elev(x + RD[j][0] * R, y + RD[j][1] * R, d); if (v === v) { s += v; n++; } }
+    return n ? h - s / n : 0; };
+  const hash = (a, b) => { const v = Math.sin(a * 127.1 + b * 311.7) * 43758.5453; return v - Math.floor(v); };
+  const bands = { cand33: 0, cand55: 0, line33: 0, line55: 0 };
+  // seeds on the lattice (every 2 cells across, 3 in depth; the fine tier sits between). Ground that stays hidden
+  // even from the top of the fly range (eye + 5,000 m) gets none. Probability rises with height and with relief.
+  function seedsFor(tier) {
+    const out = [], uMax = Math.floor(halfW);
+    for (let ui = -uMax + tier; ui <= uMax; ui += 2) {
+      const az = azc + ui / PPR, sn = Math.sin(az), cs = Math.cos(az); let top = -Infinity;
+      for (let vi = tier; vi < GV - 1; vi += 3) {
+        const d = FLOW_D0 * Math.exp(vi / PPR), x = d * sn, y = d * cs, h = elev(x, y, d);
+        if (h !== h) continue;
+        const ang = Math.atan2(h - d * d * CURV - eyeTop, d), seen = ang >= top - 0.002;
+        if (ang > top) top = ang;
+        if (!seen || !(h > 3300)) continue;
+        if (!tier) { if (h > 5500) bands.cand55++; else if (h < 4000) bands.cand33++; }
+        const r = hash(ui + o.sector * 977 + tier * 131, vi); if (r >= 0.91) continue;
+        const t1 = Math.pow(flowSm(3800, 7200, h), 1.2); let rel = NaN;
+        if (r >= 0.03 + 0.88 * t1) { rel = relAt(x, y, d, h); if (r >= 0.03 + 0.88 * Math.max(t1, flowSm(120, 650, rel))) continue; }
+        out.push([x, y, h, rel, d]);
+      }
+    }
+    return out.sort((a, b) => b[2] - a[2]);                  // highest first
+  }
+  let cap = 65536, buf = new ArrayBuffer(cap * FLOW_BYTES), F = new Float32Array(buf), B = new Uint8Array(buf), nV = 0, nLines = 0, lineNo = 0;
+  const grow = (need) => { if (nV + need <= cap) return; while (nV + need > cap) cap *= 2; const nb = new ArrayBuffer(cap * FLOW_BYTES); new Uint8Array(nb).set(B.subarray(0, nV * FLOW_BYTES)); buf = nb; F = new Float32Array(buf); B = new Uint8Array(buf); };
+  const MAXN = 400, PX = new Float64Array(MAXN), PY = new Float64Array(MAXN), PH = new Float64Array(MAXN), PD = new Float64Array(MAXN);
+  // one line downhill from a seed; returns its vertex count (0 if dropped)
+  function trace(sd, tier) {
+    let x = sd[0], y = sd[1]; const h0 = sd[2], rel0 = sd[3] === sd[3] ? sd[3] : relAt(x, y, sd[4], h0), sepK = tier ? 0.5 : 1;
+    if ((tier || (h0 < 5600 && rel0 < 250)) && near(cellU(x, y), cellV(sd[4]), 0, flowSep(h0) * 0.6 * sepK)) return 0;
+    const id = (lineNo++ % 65534) + 1; let n = 0, hPrev = Infinity;
+    for (let k = 0; k < MAXN; k++) {
+      const d = Math.hypot(x, y); if (!(d >= FLOW_D0 && d <= FLOW_MAXD)) break;
+      const e = Math.max(25, d * 0.004), h = elev(x, y, d), hx = elev(x + e, y, d), hy = elev(x, y + e, d);
+      if (!(h === h && hx === hx && hy === hy) || h > hPrev + 0.5) break;
+      const gx = (hx - h) / e, gy = (hy - h) / e, gm = Math.hypot(gx, gy); if (gm < 0.04) break;
+      const u = cellU(x, y), v = cellV(d); if (u < 0 || u > GW - 1) break;
+      if (h < h0 - 350 && near(u, v, id, flowSep(h) * 0.5 * sepK)) break;      // bunch freely near the top, thin out below
+      PX[n] = x; PY[n] = y; PH[n] = h; PD[n] = d; n++; hPrev = h;
+      const step = 3 * d / PPR; x -= gx / gm * step; y -= gy / gm * step;
+    }
+    if (n < 6) return 0;
+    let len = 0; for (let j = 1; j < n; j++) len += Math.hypot(PX[j] - PX[j - 1], PY[j] - PY[j - 1]);
+    const span = Math.max(900, Math.min(2800, rel0 * 3)), peakK = 0.05 + 0.2 * flowSm(4300, 7400, h0) + 0.14 * flowSm(120, 650, rel0);
+    grow(n); let run = 0;
+    for (let j = 0; j < n; j++) {
+      const X = PX[j], Y = PY[j], h = PH[j], d = PD[j], i = nV + j;
+      if (j) run += Math.hypot(X - PX[j - 1], Y - PY[j - 1]);
+      const e2 = (d < 7000 ? 70 : d < 20000 ? 140 : d < 72000 ? 280 : 560) * 2.5;
+      const c1 = elev(X + e2, Y, d), c2 = elev(X - e2, Y, d), c3 = elev(X, Y + e2, d), c4 = elev(X, Y - e2, d);
+      const conv = (c1 === c1 && c2 === c2 && c3 === c3 && c4 === c4) ? (4 * h - c1 - c2 - c3 - c4) / e2 : 0;
+      const w = 0.38 * peakK * (0.1 + 0.9 * Math.pow(flowSm(h0 - span, h0, h), 1.6));
+      F[i * 4] = X; F[i * 4 + 1] = Y; F[i * 4 + 2] = h + 2;
+      B[i * 16 + 12] = j === n - 1 ? 255 : Math.min(254, Math.round(run / len * 255));
+      B[i * 16 + 13] = Math.max(1, Math.round(Math.min(1, w / FLOW_WMAX) * 255));
+      B[i * 16 + 14] = Math.round(127 + 127 * Math.tanh(0.6 * conv));
+      B[i * 16 + 15] = tier + (j === n - 1 ? 2 : 0);
+      // take the cells along the segment
+      const u = cellU(X, Y), v = cellV(d);
+      if (j) { const up = cellU(PX[j - 1], PY[j - 1]), vp_ = cellV(PD[j - 1]);
+        for (let q = 1; q <= 3; q++) { const uu = Math.round(up + (u - up) * q / 3), vv = Math.round(vp_ + (v - vp_) * q / 3); if (uu >= 0 && uu < GW && vv >= 0 && vv < GV) occ[vv * GW + uu] = id; } }
+      else { const uu = Math.round(u), vv = Math.round(v); if (uu >= 0 && uu < GW && vv >= 0 && vv < GV) occ[vv * GW + uu] = id; }
+    }
+    nV += n; nLines++;
+    if (!tier) { if (h0 > 5500) bands.line55++; else if (h0 < 4000) bands.line33++; }
+    return n;
+  }
+  const budget = o.budget || Math.floor(FLOW_BUDGET / FLOW_SECTORS), tiers = o.tiers || 2;
+  for (let tier = 0; tier < tiers; tier++) {
+    const limit = tier === 0 && tiers > 1 ? Math.floor(budget * 0.7) : budget;
+    for (const sd of seedsFor(tier)) { if (nV + MAXN > limit && nV + 6 > limit) break; const before = nV; trace(sd, tier); if (nV > limit) { nV = before; nLines--; break; } }
+  }
+  // cells near the sector's edges, for the neighbours: [u (global), v] pairs
+  const edge = []; const band = 2 * M;
+  for (let v = 0; v < GV; v++) for (let u = 0; u < GW; u++) { if (u === band) u = GW - band; const c = occ[v * GW + u]; if (c && c !== 65535) edge.push(Math.round((azc + (u - U0) / PPR) * PPR), v); }
+  return { verts: buf.slice(0, nV * FLOW_BYTES), nLines, nVerts: nV, edge: new Int32Array(edge), bands, ms: Date.now() - t0 };
+}
+</script>
 <!-- v3 WebGL2 panorama shaders (GLSL ES 3.00). The terrain is a polar mesh in metres around the viewer;
      the vertex shader projects it cylindrically: x = azimuth, y = elevation angle (the same maths as project()). -->
 <script id="glsl-terrain-vs" type="text/plain">#version 300 es
@@ -1133,6 +1248,7 @@ const TILE_URLS = [
 const SHARED = document.getElementById('shared-src').textContent;
 (0, eval)(SHARED);
 (0, eval)(document.getElementById('mesh-src').textContent);   // mesh constants and meshRings() on the page too
+(0, eval)(document.getElementById('flow-src').textContent);   // flow-line constants on the page too
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => Math.round(n).toLocaleString('en-IN');
 const TAU = Math.PI * 2;
@@ -1285,10 +1401,20 @@ const easeIO = (k) => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
 
 // ---------- worker pool ----------
 function makeWorker() {
-  const src = SHARED + '\n' + document.getElementById('worker-src').textContent + '\n' + document.getElementById('mesh-src').textContent;
+  const src = SHARED + '\n' + document.getElementById('worker-src').textContent + '\n' + document.getElementById('mesh-src').textContent + '\n' + document.getElementById('flow-src').textContent;
   const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
   const w = new Worker(url);
+  return wireWorker(w);
+}
+// answers go to onWorker; a worker that throws rejects everything it was asked (no request waits for ever)
+function wireWorker(w) {
   w.onmessage = (e) => onWorker(w, e.data);
+  w.onerror = (e) => {
+    e.preventDefault && e.preventDefault();
+    console.warn('worker failed: ' + (e.message || 'error'));
+    const cb = w._cb || {}; w._cb = {};
+    for (const id in cb) { clearTimeout(cb[id].timer); cb[id].rej(new Error('worker failed: ' + (e.message || 'error'))); }
+  };
   return w;
 }
 function onWorker(w, m) {
@@ -1296,10 +1422,18 @@ function onWorker(w, m) {
   else if (m.cmd === 'strip') (m.kind === 'frame' ? onFlyFrame(m) : onStrip(m));
   else if (m.cmd === 'los') w._los && w._los(m.vis);
   else if (m.cmd === 'rivers') w._riv && w._riv(m);
-  else if (m.cmd === 'mesh' || m.cmd === 'elev') { const cb = w._cb && w._cb[m.id]; if (cb) { delete w._cb[m.id]; cb(m); } }
+  else if (m.id) { const cb = w._cb && w._cb[m.id]; if (cb) { delete w._cb[m.id]; clearTimeout(cb.timer); cb.res(m); } }
 }
 let reqId = 0;
-function ask(w, msg, transfer) { return new Promise((res) => { const id = ++reqId; (w._cb || (w._cb = {}))[id] = res; w.postMessage({ ...msg, id }, transfer || []); }); }
+// ask a worker and wait for its answer; rejects if the worker throws or stays silent for timeoutMs
+function ask(w, msg, transfer, timeoutMs = 60000) {
+  return new Promise((res, rej) => {
+    const id = ++reqId, cb = { res, rej, timer: 0 };
+    cb.timer = setTimeout(() => { if (w._cb && w._cb[id]) { delete w._cb[id]; rej(new Error('worker timed out: ' + msg.cmd)); } }, timeoutMs);
+    (w._cb || (w._cb = {}))[id] = cb;
+    w.postMessage({ ...msg, id }, transfer || []);
+  });
+}
 // The polar mesh, built in row bands across the worker pool and stitched here. The index is the same for
 // every viewpoint: a wrapped grid (the last column joins the first), column by column, so a frame can draw
 // just the contiguous range of columns in view.
@@ -2976,6 +3110,12 @@ window.__game = { VIEWPOINTS, get CUR() { return CUR; }, view, selectVp, enterVi
     return alts.map(a => (a === -Infinity ? null : H / 2 - (a - view.pitch) * p));
   },
   stats: () => ({ ...stats }),
+  FLOW: { PPR: FLOW_PPR, D0: FLOW_D0, SECTORS: FLOW_SECTORS, ALGO: FLOW_ALGO },
+  traceForTest: (o = {}) => ask(workers[0], { cmd: 'flow', sector: 0, az0: view.heading, tiers: o.tiers || 2, budget: o.budget, occ: null }, [], 240000),
+  askBrokenWorker: () => { const w = wireWorker(new Worker(URL.createObjectURL(new Blob(['onmessage = () => { throw new Error("boom"); };'], { type: 'text/javascript' }))));
+    return ask(w, { cmd: 'x' }, [], 5000).then(() => 'answered', (e) => (/failed/.test(e.message) ? 'rejected' : e.message)).finally(() => w.terminate()); },
+  askSilentWorker: (ms) => { const w = wireWorker(new Worker(URL.createObjectURL(new Blob(['onmessage = () => {};'], { type: 'text/javascript' }))));
+    return ask(w, { cmd: 'x' }, [], ms).then(() => 'answered', (e) => (/timed out/.test(e.message) ? 'timeout' : e.message)).finally(() => w.terminate()); },
   buildMeshForTest: () => buildMesh(),
   elevAtPolarForTest: (pts) => ask(workers[0], { cmd: 'elev', pts }).then(m => m.h) };
 </script>
