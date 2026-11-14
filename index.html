@@ -170,7 +170,10 @@ body[data-theme=light] .brand span { color: #5b6370; }
 .vp-marker.done:hover .mt .body, .vp-marker.done.sel .mt .body { fill: #fff; stroke: #fff; }
 
 /* ---------- Panorama (PeakFinder-style: monochrome line drawing, round icon buttons, nothing parked over the view) ---------- */
-#pano, #fx { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#pano, #fx, #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#gl { display: none; background: var(--pano-bg); }
+#play.gl #gl { display: block; }
+#play.gl #pano { visibility: hidden; }
 #pano { background: var(--pano-bg); }
 #fx { pointer-events: none; }
 #stage { position: absolute; inset: 0; touch-action: none; cursor: grab; }
@@ -410,6 +413,7 @@ body[data-theme=light] .brand span { color: #5b6370; }
 <!-- ============ PLAY: panorama ============ -->
 <section id="play" class="view fade" aria-label="Panorama">
   <canvas id="pano"></canvas>
+  <canvas id="gl"></canvas>
   <canvas id="fx"></canvas>
   <div id="veil"></div>
   <div id="stage"><div id="labels"></div></div>
@@ -576,6 +580,7 @@ onmessage = (e) => {
     const o = buildPolarMesh(levels, vp, m);
     postMessage({ cmd: 'mesh', id: m.id, r0: o.r0, r1: o.r1, pos: o.pos.buffer, attr: o.attr.buffer }, [o.pos.buffer, o.attr.buffer]); return;
   }
+  if (m.cmd === 'skyline') { postMessage({ cmd: 'elev', id: m.id, h: m.azs.map(az => skylineAlt(az, m.eye, m.maxD)) }); return; }
   if (m.cmd === 'elev') { postMessage({ cmd: 'elev', id: m.id, h: elevAtPolar(levels, vp, m.pts) }); return; }
   if (m.cmd === 'los') {
     const v = { lat: vp.lat, lon: vp.lon, eye: m.eye };
@@ -821,6 +826,8 @@ function meshRings(rows, d0, maxD) {
   return r;
 }
 // rows r0..r1-1 of the mesh: pos (east, north, height) and attr (nx, ny, conv, rel) per vertex.
+// Each vertex stays on its column's ray but moves to the highest of 5 points inside its ring cell
+// (rings[r]·q^±½), so crests and summits between two rings are never cut off the skyline.
 // Missing heights are written as h = −1e4 with attr.w = −1e9, so the shader drops them and nothing is NaN.
 function buildPolarMesh(levels, vp, o) {
   const cols = o.cols || MESH_COLS, rows = o.rows || MESH_ROWS, d0 = o.d0 || MESH_D0, maxD = o.maxD || MESH_MAXD;
@@ -830,14 +837,21 @@ function buildPolarMesh(levels, vp, o) {
   const SIN = new Float64Array(cols), COS = new Float64Array(cols);
   for (let c = 0; c < cols; c++) { const az = 2 * Math.PI * c / cols; SIN[c] = Math.sin(az); COS[c] = Math.cos(az); }
   const RD = [[1, 0], [-1, 0], [0, 1], [0, -1], [.7, .7], [-.7, -.7], [.7, -.7], [-.7, .7]];
-  const lat0 = vp.lat, lon0 = vp.lon;
+  const lat0 = vp.lat, lon0 = vp.lon, q = Math.sqrt(rings[1] / rings[0]);
+  const SUB = [1, Math.pow(q, -0.75), Math.pow(q, -0.375), Math.pow(q, 0.375), Math.pow(q, 0.75)];
   for (let r = r0; r < r1; r++) {
-    const d = rings[r], e = d < 7000 ? 70 : d < 20000 ? 140 : d < 72000 ? 280 : 560, e2 = e * 2.5, R = Math.max(1200, 0.06 * d);
+    const dr = rings[r], e = dr < 7000 ? 70 : dr < 20000 ? 140 : dr < 72000 ? 280 : 560, e2 = e * 2.5, R = Math.max(1200, 0.06 * dr);
+    const nSub = r === 0 || r === rows - 1 ? 1 : 5;        // the first and last rings stay exact
     for (let c = 0; c < cols; c++) {
       const i = (r - r0) * cols + c, s = SIN[c], co = COS[c];
+      let d = dr, h = NaN;
+      for (let k = 0; k < nSub; k++) {
+        const dk = dr * SUB[k], la = lat0 + dk * co / K_DEG, lo = lon0 + dk * s / (K_DEG * Math.cos(la * 0.017453292519943295));
+        const hk = elevAt(levels, lo, la, dk);
+        if (hk === hk && !(hk <= h)) { h = hk; d = dk; }
+      }
       const lat = lat0 + d * co / K_DEG, cl = Math.cos(lat * 0.017453292519943295), lon = lon0 + d * s / (K_DEG * cl);
       const dLon = 1 / (K_DEG * cl), dLat = 1 / K_DEG;
-      const h = elevAt(levels, lon, lat, d);
       pos[i * 3] = d * s; pos[i * 3 + 1] = d * co;
       if (h !== h) { pos[i * 3 + 2] = -1e4; attr[i * 4 + 3] = -1e9; continue; }
       pos[i * 3 + 2] = h;
@@ -861,10 +875,97 @@ function buildPolarMesh(levels, vp, o) {
   }
   return { cols, rows, r0, r1, rings, pos, attr };
 }
+// highest elevation angle along an azimuth (a fine CPU ray march, used to check the GPU skyline)
+function skylineAlt(az, eye, maxD) {
+  let best = -Infinity, d = 12;
+  while (d < maxD) {
+    const [la, lo] = geoFrom(vp.lat, vp.lon, az, d), h = elevAt(levels, lo, la, d);
+    if (h === h) { const a = Math.atan2(h - d * d * CURV - eye, d); if (a > best) best = a; }
+    d += Math.max(4, d * 0.0015);
+  }
+  return best;
+}
 function elevAtPolar(levels, vp, pts) {
   return pts.map(([az, d]) => { const [la, lo] = geoFrom(vp.lat, vp.lon, az, d); return elevAt(levels, lo, la, d); });
 }
 </script>
+<!-- v3 WebGL2 panorama shaders (GLSL ES 3.00). The terrain is a polar mesh in metres around the viewer;
+     the vertex shader projects it cylindrically: x = azimuth, y = elevation angle (the same maths as project()). -->
+<script id="glsl-terrain-vs" type="text/plain">#version 300 es
+precision highp float;
+in vec3 aPos;             // east, north, height (m)
+in vec4 aAttr;            // nx, ny, conv, rel  (rel = −1e9 marks a hole)
+uniform float uHeading, uPitch, uPpr, uEye, uW, uH, uCurv, uFar;
+out float vD, vH, vBehind;
+out vec4 vAttr;
+const float PI = 3.14159265358979, TAU = 6.28318530717959;
+void main() {
+  float d = length(aPos.xy);
+  float dx = mod(atan(aPos.x, aPos.y) - uHeading + PI, TAU) - PI;
+  float alt = atan(aPos.z - d * d * uCurv - uEye, max(d, 1.0));
+  vD = d; vH = aPos.z; vAttr = aAttr;
+  vBehind = abs(dx) > 2.2 ? 1.0 : 0.0;          // triangles across the seam behind the viewer are dropped
+  gl_Position = vec4(dx * uPpr / (uW * 0.5), (alt - uPitch) * uPpr / (uH * 0.5), clamp(d / uFar, 0.0, 1.0) * 2.0 - 1.0, 1.0);
+}
+</script>
+<script id="glsl-terrain-fs" type="text/plain">#version 300 es
+precision highp float;
+in float vD, vH, vBehind;
+in vec4 vAttr;
+uniform float uMaxD, uFar;
+uniform vec3 uNear, uFarC, uGlow, uDeep, uMist, uHor;
+uniform float uGlowK, uDeepK, uSun, uCurvK, uHaze, uMistK, uMistLo, uMistHi;
+layout(location = 0) out vec4 oCol;
+layout(location = 1) out vec4 oDep;
+vec4 encDepth(float d) {
+  float v = floor(clamp(d / uFar, 0.0, 1.0) * 16777214.0);
+  return vec4(floor(v / 65536.0), mod(floor(v / 256.0), 256.0), mod(v, 256.0), 255.0) / 255.0;
+}
+void main() {
+  if (vBehind > 0.0 || vAttr.w < -1e5 || vD > uMaxD) discard;
+  float fd = clamp(vD / uMaxD, 0.0, 1.0);
+  vec3 n = normalize(vec3(vAttr.x, vAttr.y, sqrt(max(0.0, 1.0 - vAttr.x * vAttr.x - vAttr.y * vAttr.y))));
+  const vec3 SUN = vec3(-0.5417, 0.5417, 0.6428);      // north-west, 40° up
+  float sh = dot(n, SUN) - SUN.z;
+  float L = clamp(0.5 + sh * 1.4 * uSun + tanh(vAttr.z * uCurvK) * 0.45, 0.0, 1.0);
+  vec3 c = mix(uNear, uFarC, pow(fd, 0.7));
+  c = mix(c, uGlow, L * uGlowK * (1.0 - fd * 0.7));
+  c = mix(c, uDeep, (1.0 - L) * uDeepK * (1.0 - fd));
+  c = mix(c, uHor, pow(fd, 1.6) * uHaze);
+  float sm1 = smoothstep(uMistLo, uMistHi, vH);
+  float mist = (1.0 - sm1) * smoothstep(0.03, 0.25, fd) * 0.75 + smoothstep(0.35, 1.0, fd) * 0.35;
+  c = mix(c, uMist, min(0.85, mist * uMistK));
+  oCol = vec4(c, 1.0);
+  oDep = encDepth(vD);
+}
+</script>
+<script id="glsl-screen-vs" type="text/plain">#version 300 es
+precision highp float;
+out vec2 vUv;
+void main() { vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); vUv = p; gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }
+</script>
+<script id="glsl-sky-fs" type="text/plain">#version 300 es
+precision highp float;
+in vec2 vUv;
+uniform float uPitch, uPpr, uH;
+uniform vec3 uSkyTop, uSkyHor;
+layout(location = 0) out vec4 oCol;
+layout(location = 1) out vec4 oDep;
+void main() {
+  float alt = uPitch + (vUv.y - 0.5) * uH / uPpr;
+  float t = pow(smoothstep(-0.02, 0.26, alt), 0.8);
+  oCol = vec4(mix(uSkyHor, uSkyTop, t), 1.0);
+  oDep = vec4(1.0);                                     // sky: the largest encoded distance
+}
+</script>
+<script id="glsl-edge-fs" type="text/plain">#version 300 es
+precision highp float;
+in vec2 vUv;
+uniform sampler2D uCol, uDep;
+out vec4 o;
+void main() { o = vec4(texture(uCol, vUv).rgb, 1.0); }
+</script>
+
 
 
 <script>
@@ -1236,6 +1337,12 @@ function drawPano() {
   if (Gprev) drawGen(Gprev, W, H, cssPpr, dpr);
   if (G) drawGen(G, W, H, cssPpr, dpr);
 }
+function drawGL() {
+  if (!GLPano.ok || !GLPano.mesh || !CUR) return;
+  const { W, H } = cssSize();
+  GLPano.render({ heading: view.heading, pitch: view.pitch, hfov: view.hfov, eye: curEye(), maxD: PREFS.vis * 1000, W, H, dpr: window.devicePixelRatio || 1 });
+  if (GLPano.ready) revealPano();
+}
 function revealPano() { const v = $('veil'); if (v.style.opacity !== '0') v.style.opacity = '0'; }
 
 // =====================================================================================
@@ -1254,6 +1361,142 @@ function depthAtAng(g, az, alt) {
   if (row < 0 || row >= g.Hs) return NaN;
   const v = st.depth[row * SW + col]; return v === 65535 ? Infinity : v * 10;
 }
+
+// =====================================================================================
+//  GL panorama (v3): the whole 360° terrain is a polar mesh on the GPU. Panning, zoom, visibility and
+//  eye height are uniforms, so nothing re-renders on the processor. Terrain draws into an offscreen
+//  target (colour + encoded distance); a full-screen pass composes it to the canvas.
+// =====================================================================================
+const GL_FAR = 300000;                                  // distance encoding range (m)
+const GL_THEMES = {
+  dark: { skyTop: '#0b0d11', skyHor: '#2b313a', near: '#0f1114', far: '#2a2f37', glow: '#8d939c', deep: '#07080a', mist: '#3a414b',
+          glowK: .18, deepK: .3, sun: 1, curvK: .55, haze: .0, mistK: 1, mistLo: 2400, mistHi: 4300 },
+  light: { skyTop: '#f6f3ec', skyHor: '#ece8de', near: '#8f8b84', far: '#ddd8cd', glow: '#f4f1ea', deep: '#4a4741', mist: '#e9e5db',
+          glowK: .45, deepK: .35, sun: 1, curvK: .5, haze: .3, mistK: .8, mistLo: 2400, mistHi: 4300 },
+};
+const GLPano = (() => {
+  const P = { ok: false, ready: false, canvas: null, gl: null };
+  let gl, progT, progSky, progEdge, vao = null, nIdx = 0, fbo = null, texCol = null, texDep = null, rbDepth = null, fw = 0, fh = 0;
+  let theme = GL_THEMES.dark, last = null, depthCache = null;
+  const U = {};
+  const rgb = (h) => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
+  const src = (id) => document.getElementById(id).textContent;
+  function program(vsId, fsId) {
+    const sh = (type, s) => { const o = gl.createShader(type); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+    const p = gl.createProgram();
+    gl.attachShader(p, sh(gl.VERTEX_SHADER, src(vsId))); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, src(fsId)));
+    gl.bindAttribLocation(p, 0, 'aPos'); gl.bindAttribLocation(p, 1, 'aAttr');
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+    for (let i = 0; i < n; i++) { const nm = gl.getActiveUniform(p, i).name; u[nm] = gl.getUniformLocation(p, nm); }
+    return { p, u };
+  }
+  function setup() {
+    progT = program('glsl-terrain-vs', 'glsl-terrain-fs');
+    progSky = program('glsl-screen-vs', 'glsl-sky-fs');
+    progEdge = program('glsl-screen-vs', 'glsl-edge-fs');
+    vao = null; nIdx = 0; fbo = null; fw = fh = 0;
+  }
+  P.init = (canvas) => {
+    P.canvas = canvas;
+    try {
+      gl = canvas.getContext('webgl2', { antialias: false, alpha: false, depth: false, premultipliedAlpha: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
+      if (!gl) return (P.ok = false);
+      P.gl = gl; setup();
+      P.ok = true;
+    } catch (e) { console.warn('WebGL2 panorama unavailable', e); P.ok = false; }
+    return P.ok;
+  };
+  P.setMesh = (m) => {
+    P.ready = false; P.mesh = m;
+    if (vao) gl.deleteVertexArray(vao);
+    for (const b of P._bufs || []) gl.deleteBuffer(b);
+    vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+    const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, m.pos, gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    const ab = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, ab); gl.bufferData(gl.ARRAY_BUFFER, m.attr, gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 0, 0);
+    const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, m.index, gl.STATIC_DRAW);
+    gl.bindVertexArray(null);
+    P._bufs = [vb, ab, ib]; nIdx = m.index.length;
+  };
+  P.clearMesh = () => { P.ready = false; P.mesh = null; if (vao && gl) gl.deleteVertexArray(vao); for (const b of P._bufs || []) gl.deleteBuffer(b); P._bufs = []; vao = null; nIdx = 0; };
+  P.setTheme = (name) => { theme = GL_THEMES[name] || GL_THEMES.dark; };
+  // the drawing buffer: css size × min(dpr, 2), capped at 4.2 M pixels
+  P.bufferScale = (W, H, dpr) => Math.min(Math.min(2, dpr || 1), Math.sqrt(4.2e6 / Math.max(1, W * H)));
+  function target(w, h) {
+    if (fbo && fw === w && fh === h) return;
+    if (fbo) { gl.deleteFramebuffer(fbo); gl.deleteTexture(texCol); gl.deleteTexture(texDep); gl.deleteRenderbuffer(rbDepth); }
+    const tex = () => { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, w, h);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); return t; };
+    texCol = tex(); texDep = tex();
+    rbDepth = gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER, rbDepth); gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, w, h);
+    fbo = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texCol, 0);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, texDep, 0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rbDepth);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+    fw = w; fh = h;
+  }
+  // render({ heading, pitch, hfov, eye, maxD, W, H, dpr }) — W/H in css pixels
+  P.render = (v) => {
+    if (!P.ok || !gl || gl.isContextLost()) return;
+    const s = P.bufferScale(v.W, v.H, v.dpr), bw = Math.max(1, Math.round(v.W * s)), bh = Math.max(1, Math.round(v.H * s));
+    if (P.canvas.width !== bw || P.canvas.height !== bh) { P.canvas.width = bw; P.canvas.height = bh; }
+    target(bw, bh);
+    const ppr = v.W / v.hfov, T = theme;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.viewport(0, 0, bw, bh);
+    gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST); gl.depthMask(true);
+    gl.clearDepth(1); gl.clear(gl.DEPTH_BUFFER_BIT);
+    // sky
+    gl.useProgram(progSky.p); const us = progSky.u;
+    gl.uniform1f(us.uPitch, v.pitch); gl.uniform1f(us.uPpr, ppr); gl.uniform1f(us.uH, v.H);
+    gl.uniform3fv(us.uSkyTop, rgb(T.skyTop)); gl.uniform3fv(us.uSkyHor, rgb(T.skyHor));
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    // terrain
+    if (vao && nIdx) {
+      gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS);
+      gl.useProgram(progT.p); const u = progT.u;
+      gl.uniform1f(u.uHeading, v.heading); gl.uniform1f(u.uPitch, v.pitch); gl.uniform1f(u.uPpr, ppr); gl.uniform1f(u.uEye, v.eye);
+      gl.uniform1f(u.uW, v.W); gl.uniform1f(u.uH, v.H); gl.uniform1f(u.uCurv, CURV); gl.uniform1f(u.uFar, GL_FAR); gl.uniform1f(u.uMaxD, v.maxD);
+      for (const k of ['near', 'glow', 'deep', 'mist']) gl.uniform3fv(u['u' + k[0].toUpperCase() + k.slice(1)], rgb(T[k]));
+      gl.uniform3fv(u.uFarC, rgb(T.far)); gl.uniform3fv(u.uHor, rgb(T.skyHor));
+      gl.uniform1f(u.uGlowK, T.glowK); gl.uniform1f(u.uDeepK, T.deepK); gl.uniform1f(u.uSun, T.sun); gl.uniform1f(u.uCurvK, T.curvK);
+      gl.uniform1f(u.uHaze, T.haze); gl.uniform1f(u.uMistK, T.mistK); gl.uniform1f(u.uMistLo, T.mistLo); gl.uniform1f(u.uMistHi, T.mistHi);
+      gl.bindVertexArray(vao); gl.drawElements(gl.TRIANGLES, nIdx, gl.UNSIGNED_INT, 0); gl.bindVertexArray(null);
+      gl.disable(gl.DEPTH_TEST);
+    }
+    // compose to the canvas
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, bw, bh);
+    gl.useProgram(progEdge.p); const ue = progEdge.u;
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, texCol); gl.uniform1i(ue.uCol, 0);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, texDep); gl.uniform1i(ue.uDep, 1);
+    if (ue.uPx) gl.uniform2f(ue.uPx, 1 / bw, 1 / bh);
+    P.edgeUniforms && P.edgeUniforms(gl, ue, v, s);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    last = { ...v, bw, bh, s, ppr }; depthCache = null;
+    if (vao && nIdx) P.ready = true;
+  };
+  // distance (m) at every pixel of the last frame, Infinity for sky; read only when the view settles
+  P.readDepth = () => {
+    if (!last || !fbo) return null;
+    if (depthCache) return depthCache;
+    const { bw, bh } = last, buf = new Uint8Array(bw * bh * 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.readBuffer(gl.COLOR_ATTACHMENT1);
+    gl.readPixels(0, 0, bw, bh, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const out = new Float32Array(bw * bh);
+    for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) {
+      const i = ((bh - 1 - y) * bw + x) * 4, v = buf[i] * 65536 + buf[i + 1] * 256 + buf[i + 2];   // flip: row 0 = top
+      out[y * bw + x] = v >= 16777215 ? Infinity : v / 16777214 * GL_FAR;
+    }
+    return (depthCache = { w: bw, h: bh, s: last.s, data: out, view: last });
+  };
+  P.last = () => last;
+  return P;
+})();
 
 // =====================================================================================
 //  Rivers: traced segments, tested against each strip's depth as it arrives
@@ -1969,7 +2212,7 @@ $('vis').addEventListener('input', () => {
   PREFS.vis = +$('vis').value; $('vis-val').textContent = PREFS.vis + ' km'; visFill(); savePrefs();
   clearTimeout(visT); visT = setTimeout(() => { if (CUR && !flying) { newGen(); updateLabels(); } }, 160);
 });
-segInit('seg-theme', PREFS.theme, (v) => { PREFS.theme = v; savePrefs(); $('seg-contours')._paint && $('seg-contours')._paint(contoursOn() ? 'on' : 'off'); applyTheme(); if (CUR && !flying) newGen(); needDraw = true; });
+segInit('seg-theme', PREFS.theme, (v) => { PREFS.theme = v; savePrefs(); GLPano.setTheme(v); $('seg-contours')._paint && $('seg-contours')._paint(contoursOn() ? 'on' : 'off'); applyTheme(); if (CUR && !flying) newGen(); needDraw = true; });
 segInit('seg-labels', PREFS.labels, (v) => { PREFS.labels = v; savePrefs(); needDraw = true; });
 PREFS.ct = Object.assign({ dark: false, light: true }, PREFS.ct);
 segInit('seg-contours', contoursOn() ? 'on' : 'off', (v) => { PREFS.ct[PREFS.theme] = v === 'on'; savePrefs(); if (CUR && !flying) newGen(); });
@@ -1979,6 +2222,7 @@ function applyTheme() {
   try { applyMapTheme(); } catch (e) {}   // the map may not exist yet; it themes itself on load
 }
 document.body.dataset.theme = PREFS.theme;
+if (GLPano.init($('gl'))) { $('play').classList.add('gl'); GLPano.setTheme(PREFS.theme); }
 // =====================================================================================
 //  Game: guessing
 // =====================================================================================
@@ -2139,6 +2383,7 @@ async function enterViewpoint(def) {
     for (let i = 0; i < lineArr.length; i += 2) { let a = 0; for (let j = 0; j < lineArr[i + 1]; j++) a = Math.max(a, verts[(lineArr[i] + j) * 4 + 3]); lines.push({ o: lineArr[i], n: lineArr[i + 1], acc: a }); }
     rivers = { verts, lines, ang: null, nv: 0, vis: null, buckets: null, anchors: [], tagEls: [] };
     addDetailedRiversToMap(def.id, rivers);
+    if (GLPano.ok) { showLoader('Building the terrain mesh', 1); GLPano.setTheme(PREFS.theme); GLPano.setMesh(await buildMesh()); }
     flyIdx = 0; eyeOff = 0; flying = null; selPeak = null; infoPeak = null;
     // initial view: face the main peak
     const main = vp.peaks.find(p => p.name === def.main && p.visible) || vp.peaks.find(p => p.visible) || vp.peaks[0];
@@ -2215,7 +2460,7 @@ function tick(t) {
     if (intro && intro.stage === 'sweep') needDraw = true;
     if (needDraw) {
       needDraw = false;
-      drawPano(); updateLabels(); drawCompass(); drawRose(); drawMini();
+      drawPano(); drawGL(); updateLabels(); drawCompass(); drawRose(); drawMini();
       if (scopeOn) updateScope(); if (guessTarget) positionGuess();
     }
     drawRivers(t);
@@ -2406,7 +2651,20 @@ loadMapLibre().then((ok) => {
   refreshHome();
 });
 window.__game = { VIEWPOINTS, get CUR() { return CUR; }, view, selectVp, enterViewpoint, showPlay, onViewChanged, goHome,
-  ready: () => !!(CUR && G && visibleReady(G)),
+  ready: () => !!(CUR && (GLPano.ok ? GLPano.ready : (G && visibleReady(G)))),
+  glActive: () => GLPano.ok && !!GLPano.mesh,
+  glBufferSize: () => ({ w: $('gl').width, h: $('gl').height }),
+  glBufferPixels: () => $('gl').width * $('gl').height,
+  glSkylineRows: (xs) => {
+    const D = GLPano.readDepth(); if (!D) return xs.map(() => null);
+    return xs.map((x) => { const c = Math.min(D.w - 1, Math.round(x * D.s)); for (let y = 0; y < D.h; y++) if (D.data[y * D.w + c] !== Infinity) return y / D.s; return null; });
+  },
+  cpuSkylineRows: async (xs) => {
+    const { W, H } = cssSize(), p = W / view.hfov;
+    const azs = xs.map(x => wrap(view.heading + (x - W / 2) / p));
+    const alts = (await ask(workers[0], { cmd: 'skyline', azs, eye: curEye(), maxD: PREFS.vis * 1000 })).h;
+    return alts.map(a => (a === -Infinity ? null : H / 2 - (a - view.pitch) * p));
+  },
   stats: () => ({ ...stats }),
   buildMeshForTest: () => buildMesh(),
   elevAtPolarForTest: (pts) => ask(workers[0], { cmd: 'elev', pts }).then(m => m.h) };

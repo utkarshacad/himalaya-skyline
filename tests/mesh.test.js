@@ -17,16 +17,22 @@ async function meshChecks(page) {
     // 20 random grid points: mesh height vs elevAt at the same polar point (computed in the worker)
     let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     const pts = [];
-    for (let k = 0; k < 20; k++) { const c = Math.floor(rnd() * cols), r = Math.floor(rnd() * rows); pts.push({ c, r, az: 2 * Math.PI * c / cols, d: rings[r] }); }
+    // each vertex sits on its column's ray, inside its ring cell [rings[r]·q^−½, rings[r]·q^½] (snapped to the cell's high point)
+    const q = Math.sqrt(r0);
+    for (let k = 0; k < 20; k++) {
+      const c = Math.floor(rnd() * cols), r = Math.floor(rnd() * rows), i = r * cols + c;
+      pts.push({ c, r, az: 2 * Math.PI * c / cols, d: Math.hypot(pos[i * 3], pos[i * 3 + 1]) });
+    }
     const ref = await window.__game.elevAtPolarForTest(pts.map(p => [p.az, p.d]));
-    let maxErr = 0, compared = 0, posErr = 0;
+    let maxErr = 0, compared = 0, posErr = 0, azErr = 0;
     pts.forEach((p, k) => {
       const i = p.r * cols + p.c, h = pos[i * 3 + 2];
-      const e = pos[i * 3], n = pos[i * 3 + 1];
-      posErr = Math.max(posErr, Math.abs(Math.hypot(e, n) - p.d));
+      const e = pos[i * 3], n = pos[i * 3 + 1], lo = rings[p.r] / q, hi = rings[p.r] * q;
+      posErr = Math.max(posErr, p.d < lo - 0.01 ? lo - p.d : p.d > hi + 0.01 ? p.d - hi : 0);
+      azErr = Math.max(azErr, Math.abs(Math.atan2(e, n) - (p.az > Math.PI ? p.az - 2 * Math.PI : p.az)));
       if (ref[k] === ref[k] && attr[i * 4 + 3] > -1e8) { compared++; maxErr = Math.max(maxErr, Math.abs(h - ref[k])); }
     });
-    return { ms, cols, rows, verts: pos.length / 3, attrLen: attr.length, idxLen: m.index.length, ring0: rings[0], ringN: rings[rows - 1], ratioErr, nanPos, nanAttr, holes, maxErr, compared, posErr };
+    return { ms, cols, rows, verts: pos.length / 3, attrLen: attr.length, idxLen: m.index.length, ring0: rings[0], ringN: rings[rows - 1], ratioErr, nanPos, nanAttr, holes, maxErr, compared, posErr, azErr };
   });
 }
 
@@ -42,7 +48,7 @@ H.run('mesh: polar grid around the viewer', async (keep) => {
   H.check(Math.abs(a.ring0 - 12) < 1e-3 && Math.abs(a.ringN - 235000) < 1, `rings ${a.ring0.toFixed(3)} … ${a.ringN.toFixed(1)} m`);
   H.check(a.ratioErr < 1e-6 * 2, `ring ratio constant (max deviation ${a.ratioErr.toExponential(2)})`);
   H.check(a.compared >= 15 && a.maxErr < 0.5, `heights match elevAt within 0.5 m on ${a.compared}/20 points (max ${a.maxErr.toFixed(3)} m)`);
-  H.check(a.posErr < 0.05, `east/north radius matches ring distance (max ${a.posErr.toFixed(4)} m)`);
+  H.check(a.posErr < 0.05 && a.azErr < 1e-5, `vertices lie on their column's ray inside their ring cell (radius ${a.posErr.toFixed(4)} m, az ${a.azErr.toExponential(1)} rad off)`);
   H.check(a.nanPos === 0 && a.nanAttr === 0, `no NaN in pos/attr (${a.nanPos}/${a.nanAttr})`);
   H.check(errors.length === 0, 'no console errors' + (errors.length ? ': ' + errors.slice(0, 3).join(' | ') : ''));
   await browser.close();
